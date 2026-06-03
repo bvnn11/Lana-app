@@ -3,12 +3,24 @@ LANA — Motor de Profitabilitate pentru Restaurante
 Divizia ACQ Advisory
 Cod complet, gata de deployment pe Streamlit Cloud.
 """
+import subprocess
+import sys
 import os
+
+# Forțăm instalarea modulelor lipsă direct în sistemul Streamlit
 try:
     import gspread
+    import google.generativeai
 except ModuleNotFoundError:
-    os.system('pip install gspread google-auth google-generativeai pandas Pillow')
-    import gspread
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "gspread", "google-auth", "google-generativeai", "pandas", "Pillow"])
+
+# Acum importurile normale vor merge fără probleme
+import streamlit as st
+import gspread
+import pandas as pd
+from PIL import Image
+import google.generativeai as genai
+
 
 import streamlit as st
 import gspread
