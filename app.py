@@ -438,76 +438,44 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# BACKEND — JWT / GOOGLE SHEETS (pure Python, zero extra deps)
+# BACKEND — JWT / GOOGLE SHEETS  (folosește cryptography, disponibil pe Streamlit Cloud)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _parse_asn1_len(d, p):
-    b = d[p]; p += 1
-    if b < 0x80: return b, p
-    n = b & 0x7f
-    return int.from_bytes(d[p:p+n], 'big'), p + n
-
-def _parse_asn1_int(d, p):
-    assert d[p] == 0x02, f"ASN.1 INT expected at {p}"
-    p += 1; ln, p = _parse_asn1_len(d, p)
-    return int.from_bytes(d[p:p+ln], 'big'), p + ln
-
-def _parse_pkcs1(data):
-    p = 0
-    assert data[p] == 0x30; p += 1
-    _, p = _parse_asn1_len(data, p)
-    ver, p = _parse_asn1_int(data, p)
-    n,   p = _parse_asn1_int(data, p)
-    e,   p = _parse_asn1_int(data, p)
-    d,   p = _parse_asn1_int(data, p)
-    return n, e, d
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
 
 def _b64u(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b'=').decode()
 
-def _rsa_sign(msg: bytes, pem: str) -> bytes:
-    pem_body = "".join(pem.strip().splitlines()[1:-1])
-    der = base64.b64decode(pem_body)
-    # Strip PKCS#8 wrapper if present
-    if der[1] == 0x30 or (len(der) > 26 and der[24] == 0x30):
-        # Find the SEQUENCE inside
-        idx = der.find(b'\x30\x82', 20)
-        if idx == -1: idx = der.find(b'\x04\x82')
-        if idx != -1 and der[idx] == 0x04:
-            ln = int.from_bytes(der[idx+2:idx+4], 'big')
-            der = der[idx+4:idx+4+ln]
-        elif idx != -1:
-            der = der[idx:]
-    n, e, d = _parse_pkcs1(der)
-    import hashlib
-    h = hashlib.sha256(msg).digest()
-    # PKCS#1 v1.5 padding
-    T = b'\x30\x31\x30\x0d\x06\x09\x60\x86\x48\x01\x65\x03\x04\x02\x01\x05\x00\x04\x20' + h
-    k = (n.bit_length() + 7) // 8
-    ps = b'\xff' * (k - len(T) - 3)
-    em = b'\x00\x01' + ps + b'\x00' + T
-    m = int.from_bytes(em, 'big')
-    s = pow(m, d, n)
-    return s.to_bytes(k, 'big')
-
 @st.cache_resource(ttl=3500)
 def get_access_token() -> str:
-    sa   = st.secrets["gcp_service_account"]
-    now  = int(time.time())
-    hdr  = _b64u(json.dumps({"alg":"RS256","typ":"JWT"}).encode())
-    clm  = _b64u(json.dumps({
-        "iss": sa["client_email"],
+    sa  = st.secrets["gcp_service_account"]
+    now = int(time.time())
+
+    hdr = _b64u(json.dumps({"alg": "RS256", "typ": "JWT"}).encode())
+    clm = _b64u(json.dumps({
+        "iss":   sa["client_email"],
         "scope": "https://www.googleapis.com/auth/spreadsheets",
-        "aud": "https://oauth2.googleapis.com/token",
-        "iat": now, "exp": now + 3600,
+        "aud":   "https://oauth2.googleapis.com/token",
+        "iat":   now,
+        "exp":   now + 3600,
     }).encode())
-    sig  = _b64u(_rsa_sign(f"{hdr}.{clm}".encode(), sa["private_key"]))
-    jwt  = f"{hdr}.{clm}.{sig}"
+
+    private_key = serialization.load_pem_private_key(
+        sa["private_key"].encode(), password=None
+    )
+    sig_bytes = private_key.sign(
+        f"{hdr}.{clm}".encode(),
+        padding.PKCS1v15(),
+        hashes.SHA256(),
+    )
+    jwt = f"{hdr}.{clm}.{_b64u(sig_bytes)}"
+
     body = urllib.parse.urlencode({
         "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-        "assertion": jwt,
+        "assertion":  jwt,
     }).encode()
-    req  = urllib.request.Request(
+    req = urllib.request.Request(
         "https://oauth2.googleapis.com/token", data=body,
         headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST"
     )
