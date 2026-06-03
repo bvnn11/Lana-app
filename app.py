@@ -7,23 +7,15 @@ import subprocess
 import sys
 import os
 
-# Forțăm instalarea modulelor lipsă direct în sistemul Streamlit
+# 1. Forțăm instalarea modulelor lipsă direct în sistemul Streamlit la prima rulare
 try:
     import gspread
     import google.generativeai
 except ModuleNotFoundError:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "gspread", "google-auth", "google-generativeai", "pandas", "Pillow"])
 
-# Acum importurile normale vor merge fără probleme
+# 2. Toate importurile unice de care are nevoie aplicația ca să meargă, scrise o singură dată:
 import streamlit as st
-import gspread
-import pandas as pd
-from PIL import Image
-import google.generativeai as genai
-
-
-import streamlit as st
-import gspread
 import pandas as pd
 import json
 import base64
@@ -35,13 +27,8 @@ from datetime import datetime
 # ──────────────────────────────────────────────
 # CONFIGURARE PAGINĂ & CSS GLOBAL
 # ──────────────────────────────────────────────
+# (De aici încolo continuă codul tău normal...)
 
-st.set_page_config(
-    page_title="Lana · ACQ Advisory",
-    page_icon="◈",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
 
 # CSS global — estetică Apple / Minimalist Premium
 st.markdown("""
