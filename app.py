@@ -1,18 +1,19 @@
-"""
-LANA — Motor de Profitabilitate pentru Restaurante
-Divizia ACQ Advisory
-Cod complet, gata de deployment pe Streamlit Cloud.
-"""
 import streamlit as st
+
+st.set_page_config(
+    page_title="Lana · ACQ Advisory",
+    page_icon="◈",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
 import gspread
 import pandas as pd
 import json
 import base64
-import io
 from google.oauth2.service_account import Credentials
 import google.generativeai as genai
 from datetime import datetime
-from PIL import Image
 
 # ──────────────────────────────────────────────
 # CONFIGURARE PAGINĂ & CSS GLOBAL
