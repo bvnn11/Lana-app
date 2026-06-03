@@ -3,19 +3,8 @@ LANA — Motor de Profitabilitate pentru Restaurante
 Divizia ACQ Advisory
 Cod complet, gata de deployment pe Streamlit Cloud.
 """
-import subprocess
-import sys
-import os
-
-# 1. Forțăm instalarea modulelor lipsă direct în sistemul Streamlit la prima rulare
-try:
-    import gspread
-    import google.generativeai
-except ModuleNotFoundError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "gspread", "google-auth", "google-generativeai", "pandas", "Pillow"])
-
-# 2. Toate importurile unice de care are nevoie aplicația ca să meargă, scrise o singură dată:
 import streamlit as st
+import gspread
 import pandas as pd
 import json
 import base64
@@ -23,11 +12,12 @@ import io
 from google.oauth2.service_account import Credentials
 import google.generativeai as genai
 from datetime import datetime
+from PIL import Image
 
 # ──────────────────────────────────────────────
 # CONFIGURARE PAGINĂ & CSS GLOBAL
 # ──────────────────────────────────────────────
-# (De aici încolo continuă codul tău normal...)
+
 
 
 # CSS global — estetică Apple / Minimalist Premium
