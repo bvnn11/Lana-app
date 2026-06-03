@@ -5,6 +5,7 @@ import base64
 import io
 import urllib.request
 import urllib.error
+import urllib.parse
 from datetime import datetime, date
 from PIL import Image
 
@@ -30,130 +31,181 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap');
-html, body, [class*="css"] { font-family: 'DM Sans', sans-serif !important; }
-#MainMenu, header, footer, [data-testid="stToolbar"] { display: none !important; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+html, body, [class*="css"], [class*="st-"] {
+    font-family: 'Inter', sans-serif !important;
+}
+
+/* Hide Streamlit chrome */
+#MainMenu, header, footer, [data-testid="stToolbar"],
 [data-testid="collapsedControl"] { display: none !important; }
-.stApp { background-color: #f7f7f9; }
-[data-testid="stSidebar"] { background-color: #ffffff !important; border-right: 1px solid #ebebf0; }
-[data-testid="stSidebar"] > div:first-child { padding: 2rem 1.5rem; }
+
+/* App background */
+.stApp { background-color: #0f1117 !important; }
+
+/* ── SIDEBAR ── */
+[data-testid="stSidebar"] {
+    background-color: #16181f !important;
+    border-right: 1px solid #2a2d3a !important;
+}
+[data-testid="stSidebar"] > div:first-child { padding: 2rem 1.25rem; }
+
+/* Sidebar radio label (section header) */
 [data-testid="stSidebar"] .stRadio > label {
-    font-size: 0.78rem; font-weight: 500; letter-spacing: 0.06em;
-    color: #8a8a99; text-transform: uppercase; margin-bottom: 0.6rem;
+    font-size: 0.68rem !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.12em !important;
+    color: #4a4d5e !important;
+    text-transform: uppercase !important;
+    margin-bottom: 0.5rem !important;
 }
+
+/* Sidebar radio options */
 [data-testid="stSidebar"] .stRadio > div > label {
-    display: flex; align-items: center; padding: 0.55rem 0.75rem;
-    border-radius: 10px; font-size: 0.92rem; font-weight: 400;
-    color: #1a1a2e; cursor: pointer; transition: background 0.15s ease;
+    display: flex !important;
+    align-items: center !important;
+    padding: 0.6rem 0.85rem !important;
+    border-radius: 8px !important;
+    font-size: 0.88rem !important;
+    font-weight: 400 !important;
+    color: #c8cad8 !important;
+    cursor: pointer !important;
+    transition: background 0.15s ease, color 0.15s ease !important;
+    margin-bottom: 2px !important;
 }
-[data-testid="stSidebar"] .stRadio > div > label:hover { background: #f7f7f9; }
+[data-testid="stSidebar"] .stRadio > div > label:hover {
+    background: #1e2130 !important;
+    color: #ffffff !important;
+}
+[data-testid="stSidebar"] .stRadio > div [data-checked="true"] + label,
+[data-testid="stSidebar"] .stRadio > div > label[data-testid*="checked"] {
+    background: #1e2130 !important;
+    color: #6c8eff !important;
+}
+
+/* ── INPUTS ── */
 .stTextInput > div > div > input,
-.stNumberInput > div > div > input,
+.stNumberInput > div > div > input {
+    background: #1e2130 !important;
+    border: 1px solid #2e3245 !important;
+    border-radius: 8px !important;
+    color: #e8eaf0 !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 0.9rem !important;
+    padding: 0.55rem 0.85rem !important;
+}
+.stTextInput > div > div > input:focus,
+.stNumberInput > div > div > input:focus {
+    border-color: #6c8eff !important;
+    box-shadow: 0 0 0 3px rgba(108,142,255,0.15) !important;
+}
+.stTextInput > div > div > input::placeholder { color: #4a4d5e !important; }
+
+/* Selectbox */
 .stSelectbox > div > div {
-    border: 1px solid #e8e8f0 !important; border-radius: 10px !important;
-    background: #ffffff !important; font-family: 'DM Sans', sans-serif !important;
-    font-size: 0.93rem !important; color: #1a1a2e !important; box-shadow: none !important;
+    background: #1e2130 !important;
+    border: 1px solid #2e3245 !important;
+    border-radius: 8px !important;
+    color: #e8eaf0 !important;
 }
+.stSelectbox > div > div > div { color: #e8eaf0 !important; }
+
+/* Labels for inputs */
+.stTextInput label, .stNumberInput label, .stSelectbox label,
+.stDateInput label, .stFileUploader label {
+    color: #8a8d9e !important;
+    font-size: 0.78rem !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.04em !important;
+}
+
+/* ── BUTTONS ── */
 .stButton > button {
-    border-radius: 10px; border: 1px solid #e8e8f0; background: #ffffff;
-    color: #1a1a2e; font-family: 'DM Sans', sans-serif; font-size: 0.88rem;
-    font-weight: 500; padding: 0.5rem 1.2rem; transition: all 0.15s ease;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    border-radius: 8px !important;
+    border: 1px solid #2e3245 !important;
+    background: #1e2130 !important;
+    color: #c8cad8 !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+    padding: 0.5rem 1.2rem !important;
+    transition: all 0.15s ease !important;
 }
-.stButton > button:hover { background: #1a3a5c; color: #ffffff; border-color: #1a3a5c; }
-.stButton > button[kind="primary"] { background: #1a3a5c; color: #ffffff; border-color: #1a3a5c; }
-.stButton > button[kind="primary"]:hover { background: #0d2a45; border-color: #0d2a45; }
+.stButton > button:hover {
+    background: #252a3d !important;
+    color: #ffffff !important;
+    border-color: #6c8eff !important;
+}
+.stButton > button[kind="primary"] {
+    background: #6c8eff !important;
+    color: #ffffff !important;
+    border-color: #6c8eff !important;
+}
+.stButton > button[kind="primary"]:hover {
+    background: #5a7aee !important;
+    border-color: #5a7aee !important;
+}
+
+/* File uploader */
 [data-testid="stFileUploader"] {
-    border: 1.5px dashed #d8d8e8; border-radius: 14px; background: #ffffff; padding: 1rem;
+    border: 1.5px dashed #2e3245 !important;
+    border-radius: 12px !important;
+    background: #1e2130 !important;
+    padding: 1rem !important;
+    color: #8a8d9e !important;
 }
-hr { border: none; border-top: 1px solid #ebebf0; margin: 1.5rem 0; }
-.section-title { font-size: 1.5rem; font-weight: 600; color: #0d0d1a; letter-spacing: -0.02em; margin-bottom: 0.25rem; }
-.section-sub { font-size: 0.88rem; color: #8a8a99; margin-bottom: 2rem; font-weight: 400; }
+
+/* Date input */
+.stDateInput > div > div > input {
+    background: #1e2130 !important;
+    border: 1px solid #2e3245 !important;
+    border-radius: 8px !important;
+    color: #e8eaf0 !important;
+}
+
+/* Success / warning / error */
+.stSuccess { background: #0d2818 !important; color: #4ade80 !important; border-radius: 8px !important; }
+.stWarning { background: #2a1f00 !important; color: #fbbf24 !important; border-radius: 8px !important; }
+.stError   { background: #2a0d0d !important; color: #f87171 !important; border-radius: 8px !important; }
+
+/* Spinner */
+.stSpinner > div { border-top-color: #6c8eff !important; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #16181f; }
+::-webkit-scrollbar-thumb { background: #2e3245; border-radius: 3px; }
+
+/* Number input stepper buttons */
+.stNumberInput button {
+    background: #1e2130 !important;
+    border-color: #2e3245 !important;
+    color: #8a8d9e !important;
+}
+
+/* Image caption */
+.stImage > div > div { color: #4a4d5e !important; font-size: 0.78rem !important; }
 </style>
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-# TOKEN GOOGLE (OAuth2 cu service account via JWT)
+# TOKEN GOOGLE (OAuth2)
 # ─────────────────────────────────────────────
 @st.cache_resource(ttl=3000)
 def get_access_token() -> str:
-    import time
-    import hmac
-    import hashlib
-    import struct
-
-    sa = st.secrets["gcp_service_account"]
-    private_key_pem = sa["private_key"]
-    client_email = sa["client_email"]
-    token_uri = sa.get("token_uri", "https://oauth2.googleapis.com/token")
-    scope = "https://www.googleapis.com/auth/spreadsheets"
-
-    now = int(time.time())
-    header = base64.urlsafe_b64encode(
-        json.dumps({"alg": "RS256", "typ": "JWT"}).encode()
-    ).rstrip(b"=").decode()
-    payload = base64.urlsafe_b64encode(json.dumps({
-        "iss": client_email,
-        "scope": scope,
-        "aud": token_uri,
-        "exp": now + 3600,
-        "iat": now,
-    }).encode()).rstrip(b"=").decode()
-    signing_input = f"{header}.{payload}".encode()
-
-    # Sign with RSA-SHA256 using only stdlib
-    try:
-        from cryptography.hazmat.primitives import hashes, serialization
-        from cryptography.hazmat.primitives.asymmetric import padding
-        private_key = serialization.load_pem_private_key(
-            private_key_pem.encode(), password=None
-        )
-        signature = private_key.sign(signing_input, padding.PKCS1v15(), hashes.SHA256())
-    except ImportError:
-        # fallback: use google-auth if available
-        import google.auth.crypt
-        import google.auth.jwt
-        signer = google.auth.crypt.RSASigner.from_service_account_info(dict(sa))
-        token_data = {
-            "iss": client_email,
-            "scope": scope,
-            "aud": token_uri,
-            "exp": now + 3600,
-            "iat": now,
-        }
-        jwt_token = google.auth.jwt.encode(signer, token_data).decode()
-        # Exchange JWT for access token
-        body = (
-            f"grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer"
-            f"&assertion={jwt_token}"
-        ).encode()
-        req = urllib.request.Request(
-            token_uri,
-            data=body,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req) as resp:
-            return json.loads(resp.read())["access_token"]
-
-    sig_b64 = base64.urlsafe_b64encode(signature).rstrip(b"=").decode()
-    jwt_token = f"{header}.{payload}.{sig_b64}"
-
-    body = (
-        f"grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer"
-        f"&assertion={jwt_token}"
-    ).encode()
-    req = urllib.request.Request(
-        token_uri,
-        data=body,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        method="POST",
+    import google.auth.transport.requests
+    from google.oauth2 import service_account
+    sa_info = dict(st.secrets["gcp_service_account"])
+    creds = service_account.Credentials.from_service_account_info(
+        sa_info,
+        scopes=["https://www.googleapis.com/auth/spreadsheets"],
     )
-    with urllib.request.urlopen(req) as resp:
-        return json.loads(resp.read())["access_token"]
+    creds.refresh(google.auth.transport.requests.Request())
+    return creds.token
 
 # ─────────────────────────────────────────────
-# HELPERS SHEETS API (HTTP pur)
+# HELPERS SHEETS API
 # ─────────────────────────────────────────────
 def sheets_get(range_name: str) -> list:
     token = get_access_token()
@@ -171,11 +223,9 @@ def sheets_get(range_name: str) -> list:
 def sheets_clear_and_write(sheet_name: str, rows: list):
     token = get_access_token()
     sid = st.secrets["spreadsheet_id"]
-    # Clear
     url_clear = f"{SHEETS_BASE}/{sid}/values/{urllib.parse.quote(sheet_name)}:clear"
     req = urllib.request.Request(
-        url_clear,
-        data=b"{}",
+        url_clear, data=b"{}",
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         method="POST",
     )
@@ -184,12 +234,10 @@ def sheets_clear_and_write(sheet_name: str, rows: list):
     except Exception as e:
         st.error(f"Eroare clear Sheet: {e}")
         return
-    # Write
     body = json.dumps({"values": rows}).encode()
     url_write = f"{SHEETS_BASE}/{sid}/values/{urllib.parse.quote(sheet_name)}?valueInputOption=RAW"
     req2 = urllib.request.Request(
-        url_write,
-        data=body,
+        url_write, data=body,
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         method="PUT",
     )
@@ -204,8 +252,7 @@ def sheets_append(sheet_name: str, rows: list):
     body = json.dumps({"values": rows}).encode()
     url = f"{SHEETS_BASE}/{sid}/values/{urllib.parse.quote(sheet_name)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS"
     req = urllib.request.Request(
-        url,
-        data=body,
+        url, data=body,
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         method="POST",
     )
@@ -214,15 +261,13 @@ def sheets_append(sheet_name: str, rows: list):
     except Exception as e:
         st.error(f"Eroare append Sheet: {e}")
 
-import urllib.parse
-
 # ─────────────────────────────────────────────
 # CITIRE / SCRIERE SHEETS
 # ─────────────────────────────────────────────
 def citeste_config() -> dict:
     rows = sheets_get("Config")
     cfg = {}
-    for row in rows[1:]:  # skip header
+    for row in rows[1:]:
         if len(row) >= 2 and row[0]:
             try:
                 cfg[row[0].strip()] = float(row[1].strip())
@@ -274,7 +319,7 @@ def citeste_retetar() -> pd.DataFrame:
     return citeste_sheet_df("Retetar", ["Preparat", "Ingredient", "Gramaj", "Pret_Vanzare"])
 
 # ─────────────────────────────────────────────
-# LOGICA FINANCIARĂ
+# LOGICĂ FINANCIARĂ
 # ─────────────────────────────────────────────
 def calculeaza_food_cost_zilnic(vanzari_df, retetar_df, stoc_df) -> float:
     if vanzari_df.empty or retetar_df.empty or stoc_df.empty:
@@ -340,7 +385,7 @@ def calculeaza_cascada(vanzari_brute: float, food_cost: float, cfg: dict) -> dic
     }
 
 # ─────────────────────────────────────────────
-# AI – GEMINI (HTTP pur, fără SDK)
+# AI – GEMINI
 # ─────────────────────────────────────────────
 def extrage_factura_cu_ai(image_bytes: bytes) -> dict | None:
     try:
@@ -382,58 +427,59 @@ def extrage_factura_cu_ai(image_bytes: bytes) -> dict | None:
 # ─────────────────────────────────────────────
 def card_metric(titlu, valoare, sub="", badge="", badge_tip="neutru"):
     if badge_tip == "profit":
-        bc, btc = "#e8f5e9", "#2e7d32"
+        bc, btc = "rgba(74,222,128,0.12)", "#4ade80"
     elif badge_tip == "pierdere":
-        bc, btc = "#fce8e8", "#c62828"
+        bc, btc = "rgba(248,113,113,0.12)", "#f87171"
     else:
-        bc, btc = "#eef2f7", "#4a6785"
-    badge_html = f'<span style="display:inline-block;padding:3px 10px;border-radius:20px;background:{bc};color:{btc};font-size:0.72rem;font-weight:500;">{badge}</span>' if badge else ""
-    sub_html = f'<div style="font-size:0.82rem;color:#8a8a99;margin-top:4px;">{sub}</div>' if sub else ""
+        bc, btc = "rgba(108,142,255,0.12)", "#6c8eff"
+    badge_html = f'<span style="display:inline-block;padding:3px 10px;border-radius:20px;background:{bc};color:{btc};font-size:0.72rem;font-weight:600;letter-spacing:0.03em;">{badge}</span>' if badge else ""
+    sub_html = f'<div style="font-size:0.78rem;color:#4a4d5e;margin-top:5px;line-height:1.4;">{sub}</div>' if sub else ""
     st.markdown(f"""
-    <div style="background:#fff;border-radius:16px;border:1px solid #e8e8f0;
-        box-shadow:0 2px 8px rgba(0,0,0,0.02);padding:1.4rem 1.6rem;margin-bottom:0.75rem;">
-        <div style="font-size:0.78rem;font-weight:500;color:#8a8a99;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:0.6rem;">{titlu}</div>
-        <div style="font-size:2.1rem;font-weight:600;color:#1a3a5c;letter-spacing:-0.03em;line-height:1.1;">{valoare}</div>
-        {sub_html}<div style="margin-top:0.7rem;">{badge_html}</div>
+    <div style="background:#16181f;border-radius:12px;border:1px solid #2a2d3a;
+        padding:1.4rem 1.5rem;margin-bottom:0.75rem;">
+        <div style="font-size:0.68rem;font-weight:600;color:#4a4d5e;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.75rem;">{titlu}</div>
+        <div style="font-size:2rem;font-weight:700;color:#e8eaf0;letter-spacing:-0.02em;line-height:1.1;">{valoare}</div>
+        {sub_html}
+        <div style="margin-top:0.8rem;">{badge_html}</div>
     </div>""", unsafe_allow_html=True)
 
 def linie_cascada(eticheta, valoare, prefix="−"):
-    color = "#2e7d32" if prefix == "+" else "#c62828" if valoare > 0 else "#8a8a99"
+    color = "#4ade80" if prefix == "+" else "#f87171" if valoare > 0 else "#4a4d5e"
     val_str = f"{'+ ' if prefix == '+' else '− '}{abs(valoare):,.2f} RON"
     st.markdown(f"""
     <div style="display:flex;justify-content:space-between;align-items:center;
-        padding:0.55rem 0;border-bottom:1px solid #f0f0f5;">
-        <span style="font-size:0.9rem;color:#4a4a5a;">{eticheta}</span>
-        <span style="font-size:0.9rem;font-weight:500;color:{color};font-variant-numeric:tabular-nums;">{val_str}</span>
+        padding:0.6rem 0;border-bottom:1px solid #1e2130;">
+        <span style="font-size:0.88rem;color:#8a8d9e;">{eticheta}</span>
+        <span style="font-size:0.88rem;font-weight:500;color:{color};font-variant-numeric:tabular-nums;">{val_str}</span>
     </div>""", unsafe_allow_html=True)
 
 def bon_fiscal(data, titlu="BON FISCAL"):
     net = data["profit_net_real"]
-    bc = "#e8f5e9" if net >= 0 else "#fce8e8"
-    btc = "#2e7d32" if net >= 0 else "#c62828"
+    bc = "rgba(74,222,128,0.12)"
+    btc = "#4ade80" if net >= 0 else "#f87171"
     st.markdown(f"""
-    <div style="background:#fff;border:1px solid #e8e8f0;border-radius:16px;padding:2rem;
-        max-width:420px;box-shadow:0 4px 24px rgba(0,0,0,0.04);">
+    <div style="background:#16181f;border:1px solid #2a2d3a;border-radius:12px;padding:1.8rem;
+        max-width:420px;">
         <div style="text-align:center;margin-bottom:1.5rem;">
-            <div style="font-size:0.7rem;font-weight:500;letter-spacing:0.15em;color:#8a8a99;text-transform:uppercase;">{titlu}</div>
-            <div style="font-size:0.78rem;color:#c0c0cc;margin-top:4px;">{datetime.now().strftime("%d.%m.%Y · %H:%M")}</div>
+            <div style="font-size:0.65rem;font-weight:600;letter-spacing:0.15em;color:#4a4d5e;text-transform:uppercase;">{titlu}</div>
+            <div style="font-size:0.75rem;color:#2e3245;margin-top:5px;">{datetime.now().strftime("%d.%m.%Y · %H:%M")}</div>
         </div>
-        <div style="border-top:1px dashed #e8e8f0;border-bottom:1px dashed #e8e8f0;padding:1rem 0;margin-bottom:1rem;">
-            {"".join(f'<div style="display:flex;justify-content:space-between;padding:0.3rem 0;font-size:0.88rem;color:#4a4a5a;"><span>{lab}</span><span style="color:{col};">{val}</span></div>' for lab, col, val in [
-                ("Încasări brute", "#0d0d1a", f"{data['vanzari_brute']:,.2f} RON"),
-                ("TVA colectat", "#c62828", f"− {data['tva_colectat']:,.2f} RON"),
-                ("Food Cost", "#c62828", f"− {data['food_cost']:,.2f} RON"),
-                ("Cheltuieli fixe", "#c62828", f"− {data['cheltuieli_fixe_zilnice']:,.2f} RON"),
-                ("Impozit firmă", "#c62828", f"− {data['impozit_firma']:,.2f} RON"),
-                ("Impozit dividende", "#c62828", f"− {data['impozit_dividend']:,.2f} RON"),
+        <div style="border-top:1px dashed #2a2d3a;border-bottom:1px dashed #2a2d3a;padding:1rem 0;margin-bottom:1rem;">
+            {"".join(f'<div style="display:flex;justify-content:space-between;padding:0.3rem 0;font-size:0.86rem;"><span style="color:#8a8d9e;">{lab}</span><span style="color:{col};">{val}</span></div>' for lab, col, val in [
+                ("Încasări brute", "#e8eaf0", f"{data['vanzari_brute']:,.2f} RON"),
+                ("TVA colectat", "#f87171", f"− {data['tva_colectat']:,.2f} RON"),
+                ("Food Cost", "#f87171", f"− {data['food_cost']:,.2f} RON"),
+                ("Cheltuieli fixe", "#f87171", f"− {data['cheltuieli_fixe_zilnice']:,.2f} RON"),
+                ("Impozit firmă", "#f87171", f"− {data['impozit_firma']:,.2f} RON"),
+                ("Impozit dividende", "#f87171", f"− {data['impozit_dividend']:,.2f} RON"),
             ])}
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem 0;">
-            <span style="font-size:1rem;font-weight:600;color:#0d0d1a;">BANI ÎN MÂNĂ</span>
-            <span style="font-size:1.6rem;font-weight:700;color:#1a3a5c;">{net:,.2f} RON</span>
+            <span style="font-size:0.95rem;font-weight:600;color:#e8eaf0;">BANI ÎN MÂNĂ</span>
+            <span style="font-size:1.5rem;font-weight:700;color:{btc};">{net:,.2f} RON</span>
         </div>
-        <div style="text-align:right;margin-top:0.5rem;">
-            <span style="display:inline-block;padding:4px 12px;border-radius:20px;background:{bc};color:{btc};font-size:0.78rem;font-weight:500;">
+        <div style="text-align:right;margin-top:0.6rem;">
+            <span style="display:inline-block;padding:4px 12px;border-radius:20px;background:{bc};color:{btc};font-size:0.75rem;font-weight:600;">
                 Marjă netă {data["marja_neta"]:.1f}%
             </span>
         </div>
@@ -444,9 +490,9 @@ def bon_fiscal(data, titlu="BON FISCAL"):
 # ─────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
-    <div style="margin-bottom:2rem;padding-bottom:1.5rem;border-bottom:1px solid #ebebf0;">
-        <div style="font-size:1.8rem;font-weight:700;color:#0d0d1a;letter-spacing:-0.03em;">◈ Lana</div>
-        <div style="font-size:0.68rem;font-weight:500;color:#b0b0be;letter-spacing:0.18em;margin-top:4px;text-transform:uppercase;">ACQ Advisory · Consulting</div>
+    <div style="margin-bottom:2rem;padding-bottom:1.5rem;border-bottom:1px solid #2a2d3a;">
+        <div style="font-size:1.6rem;font-weight:700;color:#e8eaf0;letter-spacing:-0.02em;">◈ Lana</div>
+        <div style="font-size:0.65rem;font-weight:500;color:#4a4d5e;letter-spacing:0.18em;margin-top:5px;text-transform:uppercase;">ACQ Advisory · Consulting</div>
     </div>""", unsafe_allow_html=True)
 
     sectiune = st.radio("NAVIGARE", [
@@ -458,17 +504,18 @@ with st.sidebar:
     ])
 
     st.markdown("""
-    <div style="padding-top:2rem;margin-top:3rem;border-top:1px solid #ebebf0;">
-        <div style="font-size:0.72rem;color:#c0c0cc;">Lana ADVISORY</div>
-        <div style="font-size:0.8rem;font-weight:500;color:#8a8a99;margin-top:2px;">79€ / lună</div>
+    <div style="padding-top:2rem;margin-top:3rem;border-top:1px solid #2a2d3a;">
+        <div style="font-size:0.68rem;color:#2e3245;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;">Plan activ</div>
+        <div style="font-size:0.9rem;font-weight:600;color:#6c8eff;margin-top:4px;">Lana ADVISORY</div>
+        <div style="font-size:0.8rem;color:#4a4d5e;margin-top:2px;">79€ / lună</div>
     </div>""", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
 # DASHBOARD
 # ─────────────────────────────────────────────
 if sectiune == "📊  Dashboard":
-    st.markdown('<div class="section-title">Dashboard</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-sub">Situația financiară zilnică · actualizată la ultima închidere</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:1.6rem;font-weight:700;color:#e8eaf0;letter-spacing:-0.02em;margin-bottom:0.2rem;">Dashboard</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.85rem;color:#4a4d5e;margin-bottom:2rem;">Situația financiară zilnică · actualizată la ultima închidere</div>', unsafe_allow_html=True)
 
     cfg = citeste_config()
     stoc_df = citeste_stoc()
@@ -511,107 +558,103 @@ if sectiune == "📊  Dashboard":
                     sub=f"{fc_pct:.1f}% din vânzări nete · {c['food_cost_sursa']}")
     with col3:
         total_op = c["cheltuieli_fixe_zilnice"] + c["tva_colectat"] + c["impozit_firma"] + c["impozit_dividend"]
-        card_metric("Cheltuieli Operative Totale", f"{total_op:,.2f} RON", sub="Taxe + Fixe zilnice")
+        card_metric("Cheltuieli Operative", f"{total_op:,.2f} RON", sub="Taxe + Fixe zilnice")
     with col4:
         st.markdown("""
-        <div style="background:#fff;border-radius:16px;border:1px solid #e8e8f0;
-            box-shadow:0 2px 8px rgba(0,0,0,0.02);padding:1.4rem 1.6rem;">
-            <div style="font-size:0.78rem;font-weight:500;color:#8a8a99;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:0.6rem;">Plan Activ</div>
-            <div style="font-size:1.1rem;font-weight:600;color:#1a3a5c;">Lana ADVISORY</div>
-            <div style="font-size:0.88rem;color:#8a8a99;margin-top:4px;">79€ / lună</div>
-            <div style="margin-top:0.9rem;font-size:0.78rem;color:#b0b0be;">Consultant digital de buzunar</div>
+        <div style="background:#16181f;border-radius:12px;border:1px solid #2a2d3a;padding:1.4rem 1.5rem;">
+            <div style="font-size:0.68rem;font-weight:600;color:#4a4d5e;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.75rem;">Plan Activ</div>
+            <div style="font-size:1rem;font-weight:600;color:#6c8eff;">Lana ADVISORY</div>
+            <div style="font-size:0.85rem;color:#4a4d5e;margin-top:4px;">79€ / lună</div>
+            <div style="margin-top:0.9rem;font-size:0.75rem;color:#2e3245;">Consultant digital de buzunar</div>
         </div>""", unsafe_allow_html=True)
 
-    st.markdown("<div style='height:2rem;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:1.5rem;'></div>", unsafe_allow_html=True)
     col_left, col_right = st.columns([1.2, 1])
 
     with col_left:
-        st.markdown("""<div style="background:#fff;border-radius:16px;border:1px solid #e8e8f0;
-            box-shadow:0 2px 8px rgba(0,0,0,0.02);padding:1.6rem 2rem;">
-            <div style="font-size:0.78rem;font-weight:500;color:#8a8a99;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:1.2rem;">Cascada Financiară Zilnică</div>""",
+        st.markdown("""<div style="background:#16181f;border-radius:12px;border:1px solid #2a2d3a;padding:1.5rem 1.8rem;">
+            <div style="font-size:0.68rem;font-weight:600;color:#4a4d5e;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:1.2rem;">Cascadă Financiară Zilnică</div>""",
             unsafe_allow_html=True)
         linie_cascada("Încasări brute (cu TVA)", c["vanzari_brute"], prefix="+")
         linie_cascada("TVA colectat (→ ANAF)", c["tva_colectat"])
         linie_cascada("Food Cost ingrediente", c["food_cost"])
         linie_cascada("Cheltuieli fixe zilnice", c["cheltuieli_fixe_zilnice"])
         st.markdown(f"""<div style="display:flex;justify-content:space-between;align-items:center;
-            padding:0.55rem 0;border-bottom:1px solid #e8e8f0;">
-            <span style="font-size:0.9rem;color:#0d0d1a;font-weight:500;">Profit brut operațional</span>
-            <span style="font-size:0.9rem;font-weight:600;color:#1a3a5c;">{c['profit_brut']:,.2f} RON</span>
+            padding:0.6rem 0;border-bottom:1px solid #2a2d3a;">
+            <span style="font-size:0.88rem;color:#e8eaf0;font-weight:500;">Profit brut operațional</span>
+            <span style="font-size:0.88rem;font-weight:600;color:#6c8eff;">{c['profit_brut']:,.2f} RON</span>
             </div>""", unsafe_allow_html=True)
         linie_cascada("Impozit firmă", c["impozit_firma"])
         linie_cascada("Impozit dividende", c["impozit_dividend"])
-        net_col = "#2e7d32" if c["profit_net_real"] >= 0 else "#c62828"
-        st.markdown(f"""<div style="display:flex;justify-content:space-between;align-items:center;padding:0.9rem 0;margin-top:0.5rem;">
-            <span style="font-size:1rem;font-weight:700;color:#0d0d1a;">◈ Bani în mână (net real)</span>
+        net_col = "#4ade80" if c["profit_net_real"] >= 0 else "#f87171"
+        st.markdown(f"""<div style="display:flex;justify-content:space-between;align-items:center;padding:1rem 0;margin-top:0.3rem;">
+            <span style="font-size:0.95rem;font-weight:700;color:#e8eaf0;">◈ Bani în mână (net real)</span>
             <span style="font-size:1.1rem;font-weight:700;color:{net_col};">{c['profit_net_real']:,.2f} RON</span>
             </div></div>""", unsafe_allow_html=True)
 
     with col_right:
         if not vanzari_azi.empty:
-            st.markdown("""<div style="background:#fff;border-radius:16px;border:1px solid #e8e8f0;
-                box-shadow:0 2px 8px rgba(0,0,0,0.02);padding:1.6rem 2rem;">
-                <div style="font-size:0.78rem;font-weight:500;color:#8a8a99;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:1rem;">Vânzări de azi</div>""",
+            st.markdown("""<div style="background:#16181f;border-radius:12px;border:1px solid #2a2d3a;padding:1.5rem 1.8rem;">
+                <div style="font-size:0.68rem;font-weight:600;color:#4a4d5e;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:1rem;">Vânzări de azi</div>""",
                 unsafe_allow_html=True)
             for _, row in vanzari_azi.iterrows():
-                st.markdown(f"""<div style="display:flex;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid #f5f5f8;font-size:0.88rem;">
-                    <span style="color:#4a4a5a;">{row.get('Preparat','')}</span>
-                    <span style="color:#1a3a5c;font-weight:500;">{row.get('Cantitate_Vanduta',0)} buc</span>
+                st.markdown(f"""<div style="display:flex;justify-content:space-between;padding:0.45rem 0;border-bottom:1px solid #1e2130;font-size:0.86rem;">
+                    <span style="color:#8a8d9e;">{row.get('Preparat','')}</span>
+                    <span style="color:#6c8eff;font-weight:500;">{row.get('Cantitate_Vanduta',0)} buc</span>
                     </div>""", unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
         else:
-            st.markdown("""<div style="background:#fff;border-radius:16px;border:1px solid #e8e8f0;
-                box-shadow:0 2px 8px rgba(0,0,0,0.02);padding:2rem;text-align:center;">
+            st.markdown("""<div style="background:#16181f;border-radius:12px;border:1px solid #2a2d3a;padding:2rem;text-align:center;">
                 <div style="font-size:2rem;margin-bottom:0.5rem;">📭</div>
-                <div style="font-size:0.9rem;color:#8a8a99;">Nicio vânzare înregistrată azi</div>
-                <div style="font-size:0.8rem;color:#c0c0cc;margin-top:4px;">Mergi la Vânzări Zilnice pentru a înregistra</div>
+                <div style="font-size:0.9rem;color:#4a4d5e;">Nicio vânzare înregistrată azi</div>
+                <div style="font-size:0.78rem;color:#2e3245;margin-top:4px;">Mergi la Vânzări Zilnice pentru a înregistra</div>
                 </div>""", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
 # SETĂRI FISCALE
 # ─────────────────────────────────────────────
 elif sectiune == "⚙️  Setări Fiscale":
-    st.markdown('<div class="section-title">Setări Fiscale & Cheltuieli Fixe</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-sub">Configurează parametrii fiscali și cheltuielile lunare ale afacerii tale</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:1.6rem;font-weight:700;color:#e8eaf0;letter-spacing:-0.02em;margin-bottom:0.2rem;">Setări Fiscale & Cheltuieli Fixe</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.85rem;color:#4a4d5e;margin-bottom:2rem;">Configurează parametrii fiscali și cheltuielile lunare ale afacerii tale</div>', unsafe_allow_html=True)
 
     cfg = citeste_config()
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown('<div style="font-size:0.78rem;font-weight:500;color:#8a8a99;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:1rem;">Regim Fiscal</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:0.68rem;font-weight:600;color:#4a4d5e;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:1rem;">Regim Fiscal</div>', unsafe_allow_html=True)
         regim_opts = {"Micro 1%": "micro1", "Micro 3%": "micro3", "Profit 16%": "profit16"}
         regim_rev = {v: k for k, v in regim_opts.items()}
         regim_actual = regim_rev.get(str(cfg.get("regim_fiscal", "micro1")), "Micro 1%")
         regim_sel = st.selectbox("Regim fiscal", list(regim_opts.keys()),
-                                  index=list(regim_opts.keys()).index(regim_actual), label_visibility="collapsed")
+                                  index=list(regim_opts.keys()).index(regim_actual))
 
         tva_opts = {"TVA 9% (restaurante)": 0.09, "TVA 19% (standard)": 0.19}
         tva_rev = {v: k for k, v in tva_opts.items()}
         tva_actual = tva_rev.get(float(cfg.get("cota_tva", 0.09)), "TVA 9% (restaurante)")
         tva_sel = st.selectbox("TVA", list(tva_opts.keys()),
-                                index=list(tva_opts.keys()).index(tva_actual), label_visibility="collapsed")
+                                index=list(tva_opts.keys()).index(tva_actual))
 
         div_opts = {"Impozit dividend 8%": 0.08, "Impozit dividend 10%": 0.10}
         div_rev = {v: k for k, v in div_opts.items()}
         div_actual = div_rev.get(float(cfg.get("cota_dividend", 0.08)), "Impozit dividend 8%")
         div_sel = st.selectbox("Dividend", list(div_opts.keys()),
-                                index=list(div_opts.keys()).index(div_actual), label_visibility="collapsed")
+                                index=list(div_opts.keys()).index(div_actual))
 
     with col2:
-        st.markdown('<div style="font-size:0.78rem;font-weight:500;color:#8a8a99;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:1rem;">Cheltuieli Lunare Fixe (RON)</div>', unsafe_allow_html=True)
-        chirie = st.number_input("Chirie", value=float(cfg.get("chirie_lunara", 0.0)), min_value=0.0, step=100.0, format="%.2f")
-        salarii = st.number_input("Salarii", value=float(cfg.get("salarii_lunare", 0.0)), min_value=0.0, step=100.0, format="%.2f")
-        utilitati = st.number_input("Utilități", value=float(cfg.get("utilitati_lunare", 0.0)), min_value=0.0, step=100.0, format="%.2f")
+        st.markdown('<div style="font-size:0.68rem;font-weight:600;color:#4a4d5e;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:1rem;">Cheltuieli Lunare Fixe (RON)</div>', unsafe_allow_html=True)
+        chirie = st.number_input("Chirie lunară", value=float(cfg.get("chirie_lunara", 0.0)), min_value=0.0, step=100.0, format="%.2f")
+        salarii = st.number_input("Salarii lunare", value=float(cfg.get("salarii_lunare", 0.0)), min_value=0.0, step=100.0, format="%.2f")
+        utilitati = st.number_input("Utilități lunare", value=float(cfg.get("utilitati_lunare", 0.0)), min_value=0.0, step=100.0, format="%.2f")
 
     nr_clienti = st.number_input("Nr. estimat clienți/bonuri pe lună",
                                   value=int(cfg.get("nr_clienti_lunar", 500)), min_value=1, step=10)
     total_fixe = chirie + salarii + utilitati
     regie = total_fixe / nr_clienti if nr_clienti > 0 else 0
 
-    st.markdown(f"""<div style="background:#f7f7f9;border-radius:12px;padding:1rem 1.4rem;margin:1rem 0;border:1px solid #e8e8f0;display:inline-block;">
-        <span style="font-size:0.8rem;color:#8a8a99;">Regie fixă per bon: </span>
-        <span style="font-size:1.1rem;font-weight:600;color:#1a3a5c;">{regie:.2f} RON</span>
-        <span style="font-size:0.78rem;color:#b0b0be;margin-left:6px;">/ client</span>
+    st.markdown(f"""<div style="background:#16181f;border-radius:10px;padding:1rem 1.4rem;margin:1rem 0;border:1px solid #2a2d3a;display:inline-block;">
+        <span style="font-size:0.78rem;color:#4a4d5e;">Regie fixă per bon: </span>
+        <span style="font-size:1.1rem;font-weight:700;color:#6c8eff;">{regie:.2f} RON</span>
+        <span style="font-size:0.75rem;color:#2e3245;margin-left:6px;">/ client</span>
         </div>""", unsafe_allow_html=True)
 
     if st.button("Salvează în Config →", type="primary"):
@@ -630,8 +673,8 @@ elif sectiune == "⚙️  Setări Fiscale":
 # SCANARE FACTURI
 # ─────────────────────────────────────────────
 elif sectiune == "📄  Scanare Facturi":
-    st.markdown('<div class="section-title">Scanare Facturi & Alerte de Preț</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-sub">Încarcă o imagine a facturii. AI-ul extrage produsele automat.</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:1.6rem;font-weight:700;color:#e8eaf0;letter-spacing:-0.02em;margin-bottom:0.2rem;">Scanare Facturi & Alerte de Preț</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.85rem;color:#4a4d5e;margin-bottom:2rem;">Încarcă o imagine a facturii. AI-ul extrage produsele automat.</div>', unsafe_allow_html=True)
 
     uploaded = st.file_uploader("Încarcă imagine factură", type=["jpg", "jpeg", "png", "webp"])
 
@@ -655,8 +698,8 @@ elif sectiune == "📄  Scanare Facturi":
 
     if st.session_state.produse_factura:
         stoc_df = citeste_stoc()
-        st.markdown("<hr>", unsafe_allow_html=True)
-        st.markdown('<div style="font-size:0.78rem;font-weight:500;color:#8a8a99;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:1rem;">Produse extrase · Verifică și editează</div>', unsafe_allow_html=True)
+        st.markdown("<hr style='border-color:#2a2d3a;margin:1.5rem 0;'>", unsafe_allow_html=True)
+        st.markdown('<div style="font-size:0.68rem;font-weight:600;color:#4a4d5e;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:1rem;">Produse extrase · Verifică și editează</div>', unsafe_allow_html=True)
 
         produse_editate = []
         alerte = []
@@ -665,22 +708,22 @@ elif sectiune == "📄  Scanare Facturi":
         for i, prod in enumerate(st.session_state.produse_factura):
             col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
             with col1:
-                nume = st.text_input("Produs", value=str(prod.get("produs", "")), key=f"pn_{i}", label_visibility="collapsed")
+                nume = st.text_input("Produs", value=str(prod.get("produs", "")), key=f"pn_{i}")
             with col2:
-                cant = st.number_input("Cant", value=float(prod.get("cantitate") or 0), key=f"pc_{i}", label_visibility="collapsed", min_value=0.0)
+                cant = st.number_input("Cantitate", value=float(prod.get("cantitate") or 0), key=f"pc_{i}", min_value=0.0)
             with col3:
                 unit_ai = str(prod.get("unitate", "")).lower().strip()
                 unit_invalid = unit_ai not in UNITATI_CUNOSCUTE
                 unit = st.text_input("Unitate", value="" if unit_invalid else unit_ai,
-                                     key=f"pu_{i}", label_visibility="collapsed",
+                                     key=f"pu_{i}",
                                      placeholder="kg/g/l/buc" if unit_invalid else unit_ai)
                 if unit_invalid:
-                    st.markdown('<div style="font-size:0.75rem;color:#e57373;margin-top:2px;">⚠ Unitate necunoscută</div>', unsafe_allow_html=True)
+                    st.markdown('<div style="font-size:0.72rem;color:#f87171;margin-top:2px;">⚠ Unitate necunoscută</div>', unsafe_allow_html=True)
                     are_invalide = True
                 if unit and unit.lower().strip() not in UNITATI_CUNOSCUTE:
                     are_invalide = True
             with col4:
-                pret = st.number_input("Preț/U", value=float(prod.get("pret_unitar") or 0), key=f"pp_{i}", label_visibility="collapsed", min_value=0.0)
+                pret = st.number_input("Preț/U", value=float(prod.get("pret_unitar") or 0), key=f"pp_{i}", min_value=0.0)
 
             if not stoc_df.empty and "Produs" in stoc_df.columns:
                 match = stoc_df[stoc_df["Produs"].str.lower().str.strip() == str(nume).lower().strip()]
@@ -696,14 +739,15 @@ elif sectiune == "📄  Scanare Facturi":
                                     "Pret_Unitar": pret, "Data": date.today().strftime("%Y-%m-%d")})
 
         for a in alerte:
-            st.markdown(f"""<div style="background:#fff8e1;border:1px solid #ffe082;border-radius:12px;
-                padding:1rem 1.4rem;margin:0.5rem 0;font-size:0.9rem;">
-                ⚠️ <strong>{a['produs']}</strong> s-a scumpit de la <strong>{a['vechi']:.2f}</strong>
-                la <strong>{a['nou']:.2f} RON</strong>. Profitul preparatelor a scăzut.
+            st.markdown(f"""<div style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.25);border-radius:10px;
+                padding:1rem 1.4rem;margin:0.5rem 0;font-size:0.88rem;color:#e8eaf0;">
+                ⚠️ <strong style="color:#fbbf24;">{a['produs']}</strong> s-a scumpit de la
+                <strong>{a['vechi']:.2f}</strong> la <strong>{a['nou']:.2f} RON</strong>.
+                Profitul preparatelor a scăzut.
                 </div>""", unsafe_allow_html=True)
 
         if are_invalide:
-            st.markdown('<div style="font-size:0.85rem;color:#e57373;margin-bottom:0.5rem;">Completează unitățile lipsă pentru a activa salvarea.</div>', unsafe_allow_html=True)
+            st.markdown('<div style="font-size:0.83rem;color:#f87171;margin-bottom:0.5rem;">Completează unitățile lipsă pentru a activa salvarea.</div>', unsafe_allow_html=True)
 
         if st.button("Salvează în Stoc →", disabled=are_invalide, type="primary"):
             stoc_df_curent = citeste_stoc()
@@ -729,8 +773,8 @@ elif sectiune == "📄  Scanare Facturi":
 # VÂNZĂRI ZILNICE
 # ─────────────────────────────────────────────
 elif sectiune == "📥  Vânzări Zilnice":
-    st.markdown('<div class="section-title">Înregistrare Vânzări Zilnice</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-sub">Introdu ce ai vândut azi. Stocul se actualizează automat.</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:1.6rem;font-weight:700;color:#e8eaf0;letter-spacing:-0.02em;margin-bottom:0.2rem;">Înregistrare Vânzări Zilnice</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.85rem;color:#4a4d5e;margin-bottom:2rem;">Introdu ce ai vândut azi. Stocul se actualizează automat.</div>', unsafe_allow_html=True)
 
     retetar_df = citeste_retetar()
     preparate = sorted(retetar_df["Preparat"].dropna().unique().tolist()) if not retetar_df.empty else []
@@ -746,11 +790,11 @@ elif sectiune == "📥  Vânzări Zilnice":
         col1, col2 = st.columns([2, 1])
         with col1:
             if preparate:
-                prep = st.selectbox("Preparat", ["— alege —"] + preparate, key=f"vp_{i}", label_visibility="collapsed")
+                prep = st.selectbox("Preparat", ["— alege —"] + preparate, key=f"vp_{i}")
             else:
-                prep = st.text_input("Preparat", value="", key=f"vp_{i}", label_visibility="collapsed", placeholder="Nume preparat")
+                prep = st.text_input("Preparat", value="", key=f"vp_{i}", placeholder="Nume preparat")
         with col2:
-            cant = st.number_input("Cant", value=0, min_value=0, step=1, key=f"vc_{i}", label_visibility="collapsed")
+            cant = st.number_input("Cantitate", value=0, min_value=0, step=1, key=f"vc_{i}")
         if prep and prep != "— alege —":
             vanzari_input.append({"Preparat": prep, "Cantitate_Vanduta": cant})
 
@@ -796,8 +840,8 @@ elif sectiune == "📥  Vânzări Zilnice":
 # SIMULATOR SANDBOX
 # ─────────────────────────────────────────────
 elif sectiune == "🧪  Simulator Sandbox":
-    st.markdown('<div class="section-title">Simulator Sandbox</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-sub">Testează profitabilitatea unui preparat nou înainte de a-l pune în meniu.</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:1.6rem;font-weight:700;color:#e8eaf0;letter-spacing:-0.02em;margin-bottom:0.2rem;">Simulator Sandbox</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.85rem;color:#4a4d5e;margin-bottom:2rem;">Testează profitabilitatea unui preparat nou înainte de a-l pune în meniu.</div>', unsafe_allow_html=True)
 
     cfg = citeste_config()
     stoc_df = citeste_stoc()
@@ -811,22 +855,22 @@ elif sectiune == "🧪  Simulator Sandbox":
 
     nr_ing = st.number_input("Număr ingrediente", min_value=1, max_value=20, value=3, step=1)
 
-    st.markdown('<div style="font-size:0.78rem;font-weight:500;color:#8a8a99;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:0.8rem;">Ingrediente & Gramaje</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.68rem;font-weight:600;color:#4a4d5e;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.8rem;margin-top:0.5rem;">Ingrediente & Gramaje</div>', unsafe_allow_html=True)
 
     ingrediente_sim = []
     for i in range(int(nr_ing)):
         col_a, col_b = st.columns([2, 1])
         with col_a:
             if produse_stoc:
-                ing = st.selectbox("Ingredient", ["— alege —"] + produse_stoc, key=f"si_{i}", label_visibility="collapsed")
+                ing = st.selectbox("Ingredient", ["— alege —"] + produse_stoc, key=f"si_{i}")
             else:
-                ing = st.text_input("Ingredient", key=f"si_{i}", label_visibility="collapsed", placeholder="Ingredient")
+                ing = st.text_input("Ingredient", key=f"si_{i}", placeholder="Ingredient")
         with col_b:
-            gram = st.number_input("Gramaj (g)", min_value=0.0, step=1.0, key=f"sg_{i}", label_visibility="collapsed")
+            gram = st.number_input("Gramaj (g)", min_value=0.0, step=1.0, key=f"sg_{i}")
         if ing and ing != "— alege —" and gram > 0:
             ingrediente_sim.append({"ingredient": ing, "gramaj_g": gram})
 
-    st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:0.75rem;'></div>", unsafe_allow_html=True)
 
     if st.button("Calculează Profitabilitatea →", type="primary"):
         if not nume_prep or pret_vz <= 0:
@@ -865,27 +909,27 @@ elif sectiune == "🧪  Simulator Sandbox":
                     cd = float(cfg.get("cota_dividend", 0.08))
                     factor = (1 - ci) * (1 - cd)
                     pret_rec = ((fc + regie) / (factor * 0.8)) * (1 + cota_tva) if factor > 0 else (fc + regie) * 3
-                    st.markdown(f"""<div style="background:#fce8e8;border:1px solid #f5c6c6;border-radius:14px;padding:1.5rem;margin-top:1rem;">
-                        <div style="font-size:1rem;font-weight:600;color:#c62828;margin-bottom:0.5rem;">⚠ Marjă insuficientă ({marja:.1f}%)</div>
-                        <div style="font-size:0.88rem;color:#7f1f1f;line-height:1.6;">
+                    st.markdown(f"""<div style="background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);border-radius:12px;padding:1.4rem;margin-top:1rem;">
+                        <div style="font-size:0.95rem;font-weight:600;color:#f87171;margin-bottom:0.5rem;">⚠ Marjă insuficientă ({marja:.1f}%)</div>
+                        <div style="font-size:0.85rem;color:#8a8d9e;line-height:1.6;">
                         Ajustează prețul sau reduce ingredientele costisitoare.<br>
-                        <strong>Preț recomandat pentru marjă 20%:</strong>
-                        <span style="font-size:1.1rem;font-weight:700;"> {pret_rec:.2f} RON</span></div>
+                        <strong style="color:#e8eaf0;">Preț recomandat pentru marjă 20%:</strong>
+                        <span style="font-size:1.05rem;font-weight:700;color:#f87171;"> {pret_rec:.2f} RON</span></div>
                         </div>""", unsafe_allow_html=True)
                 elif marja <= 20:
-                    st.markdown(f"""<div style="background:#fff8e1;border:1px solid #ffe082;border-radius:14px;padding:1.5rem;margin-top:1rem;">
-                        <div style="font-size:1rem;font-weight:600;color:#f57f17;margin-bottom:0.5rem;">ℹ Marjă acceptabilă ({marja:.1f}%)</div>
-                        <div style="font-size:0.88rem;color:#795700;line-height:1.6;">Există loc de optimizare. Caută furnizori mai competitivi pentru ingredientele cheie.</div>
+                    st.markdown(f"""<div style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.2);border-radius:12px;padding:1.4rem;margin-top:1rem;">
+                        <div style="font-size:0.95rem;font-weight:600;color:#fbbf24;margin-bottom:0.5rem;">ℹ Marjă acceptabilă ({marja:.1f}%)</div>
+                        <div style="font-size:0.85rem;color:#8a8d9e;line-height:1.6;">Există loc de optimizare. Caută furnizori mai competitivi pentru ingredientele cheie.</div>
                         </div>""", unsafe_allow_html=True)
                 else:
-                    st.markdown(f"""<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:14px;padding:1.5rem;margin-top:1rem;">
-                        <div style="font-size:1rem;font-weight:600;color:#2e7d32;margin-bottom:0.5rem;">✓ Marjă excelentă ({marja:.1f}%)</div>
-                        <div style="font-size:0.88rem;color:#1b5e20;line-height:1.6;">Preparatul este viabil comercial. Îl poți introduce cu încredere în meniu.</div>
+                    st.markdown(f"""<div style="background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.2);border-radius:12px;padding:1.4rem;margin-top:1rem;">
+                        <div style="font-size:0.95rem;font-weight:600;color:#4ade80;margin-bottom:0.5rem;">✓ Marjă excelentă ({marja:.1f}%)</div>
+                        <div style="font-size:0.85rem;color:#8a8d9e;line-height:1.6;">Preparatul este viabil comercial. Îl poți introduce cu încredere în meniu.</div>
                         </div>""", unsafe_allow_html=True)
 
-                st.markdown(f"""<div style="background:#fff;border:1px solid #e8e8f0;border-radius:14px;padding:1.2rem 1.5rem;margin-top:1rem;font-size:0.85rem;">
-                    <div style="color:#8a8a99;font-size:0.72rem;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:0.8rem;">Detalii calcul</div>
-                    <div style="display:flex;justify-content:space-between;padding:3px 0;color:#4a4a5a;"><span>Food cost ingrediente</span><span style="font-weight:500;">{fc:.2f} RON</span></div>
-                    <div style="display:flex;justify-content:space-between;padding:3px 0;color:#4a4a5a;"><span>Regie fixă / client</span><span style="font-weight:500;">{regie:.2f} RON</span></div>
-                    <div style="display:flex;justify-content:space-between;padding:3px 0;color:#4a4a5a;"><span>Preț vânzare (cu TVA)</span><span style="font-weight:500;">{pret_vz:.2f} RON</span></div>
+                st.markdown(f"""<div style="background:#16181f;border:1px solid #2a2d3a;border-radius:12px;padding:1.2rem 1.5rem;margin-top:1rem;font-size:0.84rem;">
+                    <div style="color:#4a4d5e;font-size:0.68rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.8rem;">Detalii calcul</div>
+                    <div style="display:flex;justify-content:space-between;padding:4px 0;"><span style="color:#8a8d9e;">Food cost ingrediente</span><span style="color:#e8eaf0;font-weight:500;">{fc:.2f} RON</span></div>
+                    <div style="display:flex;justify-content:space-between;padding:4px 0;"><span style="color:#8a8d9e;">Regie fixă / client</span><span style="color:#e8eaf0;font-weight:500;">{regie:.2f} RON</span></div>
+                    <div style="display:flex;justify-content:space-between;padding:4px 0;"><span style="color:#8a8d9e;">Preț vânzare (cu TVA)</span><span style="color:#e8eaf0;font-weight:500;">{pret_vz:.2f} RON</span></div>
                     </div>""", unsafe_allow_html=True)
