@@ -1,3 +1,14 @@
+import subprocess
+import sys
+
+# Garantează că google-auth e instalat — Streamlit Cloud uneori ignoră requirements.txt
+try:
+    import google.auth
+except ImportError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install",
+                           "google-auth>=2.28.0", "google-auth-oauthlib>=1.2.0",
+                           "--quiet"])
+
 import streamlit as st
 import pandas as pd
 import json
