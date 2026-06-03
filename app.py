@@ -3,6 +3,12 @@ LANA — Motor de Profitabilitate pentru Restaurante
 Divizia ACQ Advisory
 Cod complet, gata de deployment pe Streamlit Cloud.
 """
+import os
+try:
+    import gspread
+except ModuleNotFoundError:
+    os.system('pip install gspread google-auth google-generativeai pandas Pillow')
+    import gspread
 
 import streamlit as st
 import gspread
