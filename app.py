@@ -1,14 +1,3 @@
-import subprocess
-import sys
-
-# Garantează că google-auth e instalat — Streamlit Cloud uneori ignoră requirements.txt
-try:
-    import google.auth
-except ImportError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install",
-                           "google-auth>=2.28.0", "google-auth-oauthlib>=1.2.0",
-                           "--quiet"])
-
 import streamlit as st
 import pandas as pd
 import json
@@ -17,6 +6,7 @@ import io
 import urllib.request
 import urllib.error
 import urllib.parse
+import time
 from datetime import datetime, date
 from PIL import Image
 
@@ -29,8 +19,6 @@ UNITATI_CUNOSCUTE = {
 }
 SHEETS_BASE = "https://sheets.googleapis.com/v4/spreadsheets"
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
-
-# ─────────────────────────────────────────────
 # PAGE CONFIG & CSS
 # ─────────────────────────────────────────────
 st.set_page_config(
@@ -201,21 +189,61 @@ html, body, [class*="css"], [class*="st-"] {
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-# TOKEN GOOGLE (OAuth2)
-# ─────────────────────────────────────────────
-@st.cache_resource(ttl=3000)
-def get_access_token() -> str:
-    import google.auth.transport.requests
-    from google.oauth2 import service_account
-    sa_info = dict(st.secrets["gcp_service_account"])
-    creds = service_account.Credentials.from_service_account_info(
-        sa_info,
-        scopes=["https://www.googleapis.com/auth/spreadsheets"],
-    )
-    creds.refresh(google.auth.transport.requests.Request())
-    return creds.token
 
 # ─────────────────────────────────────────────
+# TOKEN GOOGLE — JWT pur, fără google-auth SDK
+# Folosește doar: json, base64, time, urllib (stdlib) + cryptography (pre-instalat)
+# ─────────────────────────────────────────────
+def _make_jwt(sa_info: dict) -> str:
+    """Construiește un JWT semnat RS256 pentru Google OAuth2."""
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding
+
+    now = int(time.time())
+    header = {"alg": "RS256", "typ": "JWT"}
+    payload = {
+        "iss": sa_info["client_email"],
+        "sub": sa_info["client_email"],
+        "scope": "https://www.googleapis.com/auth/spreadsheets",
+        "aud": "https://oauth2.googleapis.com/token",
+        "iat": now,
+        "exp": now + 3600,
+    }
+
+    def b64url(data: bytes) -> str:
+        return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+    seg_h = b64url(json.dumps(header, separators=(",", ":")).encode())
+    seg_p = b64url(json.dumps(payload, separators=(",", ":")).encode())
+    signing_input = f"{seg_h}.{seg_p}".encode()
+
+    private_key = serialization.load_pem_private_key(
+        sa_info["private_key"].encode(), password=None
+    )
+    signature = private_key.sign(signing_input, padding.PKCS1v15(), hashes.SHA256())
+    return f"{seg_h}.{seg_p}.{b64url(signature)}"
+
+
+@st.cache_resource(ttl=3000)
+def get_access_token() -> str:
+    sa_info = dict(st.secrets["gcp_service_account"])
+    jwt_token = _make_jwt(sa_info)
+
+    body = urllib.parse.urlencode({
+        "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        "assertion": jwt_token,
+    }).encode()
+
+    req = urllib.request.Request(
+        "https://oauth2.googleapis.com/token",
+        data=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req) as resp:
+        data = json.loads(resp.read())
+    return data["access_token"]
+
 # HELPERS SHEETS API
 # ─────────────────────────────────────────────
 def sheets_get(range_name: str) -> list:
