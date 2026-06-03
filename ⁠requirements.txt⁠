@@ -1,6 +1,7 @@
-streamlit
-gspread
-google-auth
-google-generativeai
-pandas
-Pillow
+streamlit>=1.32.0
+gspread>=6.0.0
+google-auth>=2.28.0
+google-auth-oauthlib>=1.2.0
+google-generativeai>=0.5.0
+pandas>=2.0.0
+Pillow>=10.0.0
