@@ -1,7 +1,4 @@
 streamlit
-gspread
-google-auth
-google-auth-oauthlib
-google-generativeai
 pandas
 Pillow
+cryptography
