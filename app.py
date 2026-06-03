@@ -191,49 +191,91 @@ html, body, [class*="css"], [class*="st-"] {
 # ─────────────────────────────────────────────
 
 # ─────────────────────────────────────────────
-# TOKEN GOOGLE — JWT pur, fără google-auth SDK
-# Folosește doar: json, base64, time, urllib (stdlib) + cryptography (pre-instalat)
+# TOKEN GOOGLE — JWT RS256 pur Python, ZERO dependențe externe
+# Folosește exclusiv stdlib: json, base64, hashlib, time, urllib
 # ─────────────────────────────────────────────
-def _make_jwt(sa_info: dict) -> str:
-    """Construiește un JWT semnat RS256 pentru Google OAuth2."""
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import padding
 
+def _parse_asn1_len(d, p):
+    b = d[p]; p += 1
+    if b < 0x80: return b, p
+    n = b & 0x7f
+    return int.from_bytes(d[p:p+n], 'big'), p + n
+
+def _parse_asn1_int(d, p):
+    assert d[p] == 0x02, f"ASN.1: așteptat INTEGER(0x02) la {p}, găsit 0x{d[p]:02x}"
+    p += 1; ln, p = _parse_asn1_len(d, p)
+    return int.from_bytes(d[p:p+ln], 'big'), p + ln
+
+def _parse_pkcs1(data):
+    """Parsează RSAPrivateKey PKCS#1 DER, returnează (n, d)."""
+    p = 0
+    assert data[p] == 0x30; p += 1
+    _, p = _parse_asn1_len(data, p)
+    _, p = _parse_asn1_int(data, p)   # version
+    n, p = _parse_asn1_int(data, p)   # modulus
+    _, p = _parse_asn1_int(data, p)   # publicExponent
+    d, p = _parse_asn1_int(data, p)   # privateExponent
+    return n, d
+
+def _load_rsa_private_key(pem: str):
+    """Încarcă cheia RSA privată din PEM (PKCS#1 sau PKCS#8), returnează (n, d)."""
+    lines = pem.strip().splitlines()
+    b64 = ''.join(l for l in lines if not l.startswith('---'))
+    der = base64.b64decode(b64)
+    if b'RSA PRIVATE' in pem.encode():
+        # PKCS#1 direct
+        return _parse_pkcs1(der)
+    # PKCS#8: SEQUENCE { version, AlgorithmIdentifier, OCTET STRING { PKCS#1 } }
+    p = 0
+    assert der[p] == 0x30; p += 1
+    _, p = _parse_asn1_len(der, p)
+    _, p = _parse_asn1_int(der, p)        # version INTEGER
+    assert der[p] == 0x30; p += 1         # AlgorithmIdentifier SEQUENCE
+    aln, p = _parse_asn1_len(der, p); p += aln
+    assert der[p] == 0x04; p += 1         # OCTET STRING
+    olen, p = _parse_asn1_len(der, p)
+    return _parse_pkcs1(der[p:p+olen])
+
+# DigestInfo prefix pentru SHA-256 (RFC 3447)
+_SHA256_DER = bytes([
+    0x30,0x31,0x30,0x0d,0x06,0x09,0x60,0x86,0x48,0x01,0x65,0x03,0x04,
+    0x02,0x01,0x05,0x00,0x04,0x20
+])
+
+def _rsa_pkcs1v15_sha256_sign(message: bytes, n: int, d: int) -> bytes:
+    """Semnătură RSA PKCS#1 v1.5 SHA-256, implementare pură Python."""
+    import hashlib
+    k = (n.bit_length() + 7) // 8
+    t = _SHA256_DER + hashlib.sha256(message).digest()
+    ps = b'\xff' * (k - len(t) - 3)
+    em = b'\x00\x01' + ps + b'\x00' + t
+    s = pow(int.from_bytes(em, 'big'), d, n)
+    return s.to_bytes(k, 'big')
+
+def _make_jwt(sa_info: dict) -> str:
+    def b64u(data): return base64.urlsafe_b64encode(data).rstrip(b'=').decode()
     now = int(time.time())
-    header = {"alg": "RS256", "typ": "JWT"}
-    payload = {
+    hdr = b64u(json.dumps({"alg":"RS256","typ":"JWT"}, separators=(',',':')).encode())
+    pld = b64u(json.dumps({
         "iss": sa_info["client_email"],
         "sub": sa_info["client_email"],
         "scope": "https://www.googleapis.com/auth/spreadsheets",
         "aud": "https://oauth2.googleapis.com/token",
-        "iat": now,
-        "exp": now + 3600,
-    }
-
-    def b64url(data: bytes) -> str:
-        return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
-
-    seg_h = b64url(json.dumps(header, separators=(",", ":")).encode())
-    seg_p = b64url(json.dumps(payload, separators=(",", ":")).encode())
-    signing_input = f"{seg_h}.{seg_p}".encode()
-
-    private_key = serialization.load_pem_private_key(
-        sa_info["private_key"].encode(), password=None
-    )
-    signature = private_key.sign(signing_input, padding.PKCS1v15(), hashes.SHA256())
-    return f"{seg_h}.{seg_p}.{b64url(signature)}"
-
+        "iat": now, "exp": now + 3600,
+    }, separators=(',',':')).encode())
+    signing_input = f"{hdr}.{pld}".encode()
+    n, d = _load_rsa_private_key(sa_info["private_key"])
+    sig = _rsa_pkcs1v15_sha256_sign(signing_input, n, d)
+    return f"{hdr}.{pld}.{b64u(sig)}"
 
 @st.cache_resource(ttl=3000)
 def get_access_token() -> str:
     sa_info = dict(st.secrets["gcp_service_account"])
     jwt_token = _make_jwt(sa_info)
-
     body = urllib.parse.urlencode({
         "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
         "assertion": jwt_token,
     }).encode()
-
     req = urllib.request.Request(
         "https://oauth2.googleapis.com/token",
         data=body,
