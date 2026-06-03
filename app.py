@@ -1,5 +1,26 @@
 import streamlit as st
+import gspread
+import pandas as pd
+import json
+import base64
+from google.oauth2.service_account import Credentials
+import google.generativeai as genai
+from datetime import datetime, date
+from PIL import Image
+import io
 
+# ─────────────────────────────────────────────
+# CONSTANTE
+# ─────────────────────────────────────────────
+UNITATI_CUNOSCUTE = {"kg", "g", "l", "ml", "buc", "bucata", "bucăți", "bucati", "litri", "grame", "kilograme"}
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
+
+# ─────────────────────────────────────────────
+# PAGINA CONFIG & CSS GLOBAL
+# ─────────────────────────────────────────────
 st.set_page_config(
     page_title="Lana · ACQ Advisory",
     page_icon="◈",
@@ -7,679 +28,1147 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-try:
-    import gspread
-    from google.oauth2.service_account import Credentials
-    import google.generativeai as genai
-    DEPS_OK = True
-except ImportError as e:
-    DEPS_OK = False
-    st.error(f"Dependență lipsă: {e}")
-    st.info("Verifică că requirements.txt conține toate pachetele și dă Reboot app.")
-    st.stop()
-
-import pandas as pd
-import json
-import base64
-from datetime import datetime
-
-# ──────────────────────────────────────────────
-# CSS GLOBAL — Estetică Apple / Minimalist Premium
-# ──────────────────────────────────────────────
-
 st.markdown("""
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Mono:wght@300;400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap');
 
-  html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; color: #1a1a2e; }
-  .stApp { background-color: #f7f7f9; }
+html, body, [class*="css"] {
+    font-family: 'DM Sans', sans-serif !important;
+}
 
-  [data-testid="stSidebar"] { background-color: #ffffff; border-right: 1px solid #ebebf0; }
-  [data-testid="stSidebar"] * { color: #1a1a2e !important; }
+/* Hide Streamlit chrome */
+#MainMenu, header, footer, [data-testid="stToolbar"] { display: none !important; }
+[data-testid="collapsedControl"] { display: none !important; }
 
-  h1, h2, h3 { font-weight: 600; letter-spacing: -0.02em; color: #0d0d1a; }
+/* Background */
+.stApp {
+    background-color: #f7f7f9;
+}
 
-  .metric-card {
-    background: #ffffff; border: 1px solid #e8e8f0; border-radius: 20px;
-    padding: 32px 28px; text-align: left;
-    box-shadow: 0 2px 12px rgba(0,0,10,0.04);
-    transition: box-shadow 0.25s; height: 100%;
-  }
-  .metric-card:hover { box-shadow: 0 6px 24px rgba(0,0,10,0.08); }
-  .metric-label { font-size: 12px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: #8888a0; margin-bottom: 12px; }
-  .metric-value { font-size: 42px; font-weight: 600; color: #0d0d1a; letter-spacing: -0.03em; line-height: 1; }
-  .metric-value-accent { font-size: 42px; font-weight: 600; color: #1a3a5c; letter-spacing: -0.03em; line-height: 1; }
-  .metric-sub { font-size: 13px; color: #aaaabc; margin-top: 8px; }
-  .metric-badge-green { display: inline-block; background: #e8f5e9; color: #2e7d32; border-radius: 20px; padding: 3px 10px; font-size: 12px; font-weight: 500; margin-top: 10px; }
-  .metric-badge-red { display: inline-block; background: #fce8e8; color: #c62828; border-radius: 20px; padding: 3px 10px; font-size: 12px; font-weight: 500; margin-top: 10px; }
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background-color: #ffffff !important;
+    border-right: 1px solid #ebebf0;
+}
+[data-testid="stSidebar"] > div:first-child {
+    padding: 2rem 1.5rem;
+}
 
-  .brand-block { padding: 24px 20px 16px 20px; border-bottom: 1px solid #f0f0f5; margin-bottom: 8px; }
-  .brand-name { font-size: 22px; font-weight: 700; letter-spacing: -0.03em; color: #0d0d1a; }
-  .brand-sub { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #9999b0; margin-top: 2px; }
+/* Radio buttons in sidebar */
+[data-testid="stSidebar"] .stRadio > label {
+    font-size: 0.78rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    color: #8a8a99;
+    text-transform: uppercase;
+    margin-bottom: 0.6rem;
+}
+[data-testid="stSidebar"] .stRadio > div {
+    gap: 2px;
+}
+[data-testid="stSidebar"] .stRadio > div > label {
+    display: flex;
+    align-items: center;
+    padding: 0.55rem 0.75rem;
+    border-radius: 10px;
+    font-size: 0.92rem;
+    font-weight: 400;
+    color: #1a1a2e;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    letter-spacing: 0;
+    text-transform: none;
+}
+[data-testid="stSidebar"] .stRadio > div > label:hover {
+    background: #f7f7f9;
+}
+[data-testid="stSidebar"] .stRadio > div > label[data-checked="true"] {
+    background: #f0f0f7;
+    font-weight: 500;
+    color: #1a3a5c;
+}
 
-  .section-header { font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #9999b0; margin: 28px 0 16px 0; padding-bottom: 8px; border-bottom: 1px solid #f0f0f5; }
+/* Input fields */
+.stTextInput > div > div > input,
+.stNumberInput > div > div > input,
+.stSelectbox > div > div {
+    border: 1px solid #e8e8f0 !important;
+    border-radius: 10px !important;
+    background: #ffffff !important;
+    font-family: 'DM Sans', sans-serif !important;
+    font-size: 0.93rem !important;
+    color: #1a1a2e !important;
+    box-shadow: none !important;
+}
+.stTextInput > div > div > input:focus,
+.stNumberInput > div > div > input:focus {
+    border-color: #1a3a5c !important;
+    box-shadow: 0 0 0 3px rgba(26,58,92,0.07) !important;
+}
 
-  .stButton > button { border-radius: 10px !important; font-family: 'DM Sans', sans-serif !important; font-weight: 500 !important; font-size: 14px !important; padding: 10px 22px !important; background-color: #1a3a5c !important; color: #ffffff !important; border: none !important; }
-  .stButton > button:hover { background-color: #0d2540 !important; box-shadow: 0 4px 14px rgba(26,58,92,0.25) !important; }
+/* Buttons */
+.stButton > button {
+    border-radius: 10px;
+    border: 1px solid #e8e8f0;
+    background: #ffffff;
+    color: #1a1a2e;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.88rem;
+    font-weight: 500;
+    padding: 0.5rem 1.2rem;
+    transition: all 0.15s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.stButton > button:hover {
+    background: #1a3a5c;
+    color: #ffffff;
+    border-color: #1a3a5c;
+    box-shadow: 0 2px 8px rgba(26,58,92,0.15);
+}
+.stButton > button:active {
+    transform: scale(0.98);
+}
 
-  .alert-validation { border: 1.5px solid #e53935; background: #fff5f5; border-radius: 12px; padding: 14px 18px; font-size: 13px; color: #c62828; margin: 10px 0; }
+/* Primary button override */
+.stButton > button[kind="primary"] {
+    background: #1a3a5c;
+    color: #ffffff;
+    border-color: #1a3a5c;
+}
+.stButton > button[kind="primary"]:hover {
+    background: #0d2a45;
+    border-color: #0d2a45;
+}
 
-  .result-box { background: #ffffff; border: 1px solid #e8e8f0; border-radius: 20px; padding: 36px 32px; text-align: center; box-shadow: 0 2px 18px rgba(0,0,10,0.05); margin-top: 20px; }
-  .result-main { font-size: 48px; font-weight: 700; letter-spacing: -0.04em; line-height: 1; }
-  .result-label { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #aaaabc; margin-bottom: 16px; font-weight: 500; }
-  .result-breakdown { font-family: 'DM Mono', monospace; font-size: 12px; color: #8888a0; margin-top: 20px; text-align: left; background: #f7f7f9; border-radius: 12px; padding: 16px; line-height: 1.9; }
+/* Alerts */
+.stAlert {
+    border-radius: 12px !important;
+    border: none !important;
+    font-size: 0.9rem !important;
+}
 
-  hr { border: none; border-top: 1px solid #f0f0f5; margin: 24px 0; }
-  .stDataFrame { border-radius: 14px !important; overflow: hidden !important; border: 1px solid #e8e8f0 !important; }
-  #MainMenu { visibility: hidden; }
-  footer { visibility: hidden; }
-  header { visibility: hidden; }
+/* File uploader */
+[data-testid="stFileUploader"] {
+    border: 1.5px dashed #d8d8e8;
+    border-radius: 14px;
+    background: #ffffff;
+    padding: 1rem;
+}
+
+/* Dividers */
+hr {
+    border: none;
+    border-top: 1px solid #ebebf0;
+    margin: 1.5rem 0;
+}
+
+/* DataFrame/Table */
+.stDataFrame {
+    border: 1px solid #e8e8f0;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+/* Section titles */
+.section-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #0d0d1a;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.25rem;
+}
+.section-sub {
+    font-size: 0.88rem;
+    color: #8a8a99;
+    margin-bottom: 2rem;
+    font-weight: 400;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# ──────────────────────────────────────────────
-# CONSTANTE
-# ──────────────────────────────────────────────
-
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive",
-]
-
-UNITATI_CUNOSCUTE = {
-    "kg", "g", "l", "ml", "buc", "bucata", "bucată",
-    "bucăți", "litri", "grame", "kilograme", "pcs", "pc"
-}
-
-# ──────────────────────────────────────────────
+# ─────────────────────────────────────────────
 # CONEXIUNE GOOGLE SHEETS
-# ──────────────────────────────────────────────
-
-@st.cache_resource(show_spinner=False)
-def conecteaza_gsheets():
-    """Conectare la Google Sheets prin Service Account din st.secrets."""
-    credentiale = Credentials.from_service_account_info(
+# ─────────────────────────────────────────────
+@st.cache_resource
+def get_gsheet_client():
+    creds = Credentials.from_service_account_info(
         st.secrets["gcp_service_account"], scopes=SCOPES
     )
-    client = gspread.authorize(credentiale)
+    return gspread.authorize(creds)
+
+def get_spreadsheet():
+    client = get_gsheet_client()
     return client.open_by_key(st.secrets["spreadsheet_id"])
 
-
-def citeste_foaie(spreadsheet, nume: str) -> pd.DataFrame:
-    """Citește o foaie și returnează DataFrame."""
+# ─────────────────────────────────────────────
+# CITIRE / SCRIERE SHEETS
+# ─────────────────────────────────────────────
+def citeste_config() -> dict:
     try:
-        return pd.DataFrame(spreadsheet.worksheet(nume).get_all_records())
+        sh = get_spreadsheet()
+        ws = sh.worksheet("Config")
+        rows = ws.get_all_values()
+        cfg = {}
+        for row in rows:
+            if len(row) >= 2 and row[0]:
+                key = row[0].strip()
+                val = row[1].strip() if row[1] else ""
+                try:
+                    cfg[key] = float(val)
+                except ValueError:
+                    cfg[key] = val
+        return cfg
     except Exception as e:
-        st.error(f"Eroare citire foaie '{nume}': {e}")
-        return pd.DataFrame()
-
-
-def scrie_rand(spreadsheet, nume: str, rand: list) -> bool:
-    """Adaugă un rând în foaia specificată."""
-    try:
-        spreadsheet.worksheet(nume).append_row(rand, value_input_option="USER_ENTERED")
-        return True
-    except Exception as e:
-        st.error(f"Eroare scriere în '{nume}': {e}")
-        return False
-
-
-def citeste_config(spreadsheet) -> dict:
-    """Citește foaia Config ca dicționar cheie→valoare."""
-    try:
-        date = spreadsheet.worksheet("Config").get_all_records()
-        rezultat = {}
-        for rand in date:
-            cheie = rand.get("Cheie") or rand.get("cheie", "")
-            valoare = rand.get("Valoare") or rand.get("valoare", "")
-            if cheie:
-                rezultat[cheie] = valoare
-        return rezultat
-    except Exception:
+        st.error(f"Eroare la citirea Config: {e}")
         return {}
 
-
-def actualizeaza_config(spreadsheet, cheie: str, valoare) -> bool:
-    """Actualizează sau adaugă o cheie în foaia Config."""
+def salveaza_config(cfg: dict):
     try:
-        foaie = spreadsheet.worksheet("Config")
-        celule = foaie.findall(cheie)
-        if celule:
-            foaie.update_cell(celule[0].row, 2, valoare)
-        else:
-            foaie.append_row([cheie, valoare])
-        return True
+        sh = get_spreadsheet()
+        ws = sh.worksheet("Config")
+        ws.clear()
+        ws.append_row(["Cheie", "Valoare"])
+        for k, v in cfg.items():
+            ws.append_row([k, str(v)])
+        st.cache_resource.clear()
     except Exception as e:
-        st.error(f"Eroare config '{cheie}': {e}")
-        return False
+        st.error(f"Eroare la salvarea Config: {e}")
 
-# ──────────────────────────────────────────────
-# FUNCȚII CALCUL
-# ──────────────────────────────────────────────
+def citeste_stoc() -> pd.DataFrame:
+    try:
+        sh = get_spreadsheet()
+        ws = sh.worksheet("Stoc")
+        data = ws.get_all_records()
+        if not data:
+            return pd.DataFrame(columns=["Produs", "Cantitate", "Unitate", "Pret_Unitar", "Data"])
+        return pd.DataFrame(data)
+    except Exception as e:
+        st.error(f"Eroare la citirea Stoc: {e}")
+        return pd.DataFrame(columns=["Produs", "Cantitate", "Unitate", "Pret_Unitar", "Data"])
 
-def get_cote(config: dict) -> tuple:
-    """Extrage cotele fiscale din config ca valori float."""
-    tip = str(config.get("tip_impozit", "Micro 1%"))
-    tva = float(str(config.get("cota_tva", "9%")).replace("%", "")) / 100
-    div = float(str(config.get("impozit_dividend", "8%")).replace("%", "")) / 100
-    if "1%" in tip:
-        firma = 0.01
-    elif "3%" in tip:
-        firma = 0.03
+def salveaza_stoc(df: pd.DataFrame):
+    try:
+        sh = get_spreadsheet()
+        ws = sh.worksheet("Stoc")
+        ws.clear()
+        ws.append_row(["Produs", "Cantitate", "Unitate", "Pret_Unitar", "Data"])
+        for _, row in df.iterrows():
+            ws.append_row([
+                str(row.get("Produs", "")),
+                str(row.get("Cantitate", 0)),
+                str(row.get("Unitate", "")),
+                str(row.get("Pret_Unitar", 0)),
+                str(row.get("Data", "")),
+            ])
+    except Exception as e:
+        st.error(f"Eroare la salvarea Stoc: {e}")
+
+def citeste_vanzari() -> pd.DataFrame:
+    try:
+        sh = get_spreadsheet()
+        ws = sh.worksheet("Vanzari")
+        data = ws.get_all_records()
+        if not data:
+            return pd.DataFrame(columns=["Preparat", "Cantitate_Vanduta", "Data"])
+        return pd.DataFrame(data)
+    except Exception as e:
+        st.error(f"Eroare la citirea Vanzari: {e}")
+        return pd.DataFrame(columns=["Preparat", "Cantitate_Vanduta", "Data"])
+
+def salveaza_vanzari(rows: list):
+    try:
+        sh = get_spreadsheet()
+        ws = sh.worksheet("Vanzari")
+        for row in rows:
+            ws.append_row([
+                str(row["Preparat"]),
+                str(row["Cantitate_Vanduta"]),
+                str(row["Data"]),
+            ])
+    except Exception as e:
+        st.error(f"Eroare la salvarea Vanzari: {e}")
+
+def citeste_retetar() -> pd.DataFrame:
+    try:
+        sh = get_spreadsheet()
+        ws = sh.worksheet("Retetar")
+        data = ws.get_all_records()
+        if not data:
+            return pd.DataFrame(columns=["Preparat", "Ingredient", "Gramaj", "Pret_Vanzare"])
+        return pd.DataFrame(data)
+    except Exception as e:
+        st.error(f"Eroare la citirea Retetar: {e}")
+        return pd.DataFrame(columns=["Preparat", "Ingredient", "Gramaj", "Pret_Vanzare"])
+
+# ─────────────────────────────────────────────
+# LOGICA FINANCIARĂ
+# ─────────────────────────────────────────────
+def calculeaza_food_cost_zilnic(vanzari_df: pd.DataFrame, retetar_df: pd.DataFrame, stoc_df: pd.DataFrame) -> float:
+    if vanzari_df.empty or retetar_df.empty or stoc_df.empty:
+        return 0.0
+
+    total_food_cost = 0.0
+    stoc_index = {}
+    for _, row in stoc_df.iterrows():
+        key = str(row.get("Produs", "")).lower().strip()
+        try:
+            stoc_index[key] = float(row.get("Pret_Unitar", 0))
+        except (ValueError, TypeError):
+            stoc_index[key] = 0.0
+
+    for _, vrow in vanzari_df.iterrows():
+        preparat = str(vrow.get("Preparat", "")).lower().strip()
+        try:
+            cantitate_vanduta = float(vrow.get("Cantitate_Vanduta", 0))
+        except (ValueError, TypeError):
+            cantitate_vanduta = 0.0
+
+        ingrediente = retetar_df[
+            retetar_df["Preparat"].str.lower().str.strip() == preparat
+        ]
+
+        for _, irow in ingrediente.iterrows():
+            ingredient = str(irow.get("Ingredient", "")).lower().strip()
+            try:
+                gramaj = float(irow.get("Gramaj", 0)) / 1000.0
+            except (ValueError, TypeError):
+                gramaj = 0.0
+
+            pret_unitar = stoc_index.get(ingredient, 0.0)
+            total_food_cost += cantitate_vanduta * gramaj * pret_unitar
+
+    return round(total_food_cost, 2)
+
+def calculeaza_cascada(vanzari_brute: float, food_cost: float, cfg: dict) -> dict:
+    cota_tva = cfg.get("cota_tva", 0.09)
+    chirie = cfg.get("chirie_lunara", 0.0)
+    salarii = cfg.get("salarii_lunare", 0.0)
+    utilitati = cfg.get("utilitati_lunare", 0.0)
+    regim_fiscal = cfg.get("regim_fiscal", "micro1")
+    cota_dividend = cfg.get("cota_dividend", 0.08)
+
+    if regim_fiscal == "micro1":
+        cota_impozit = 0.01
+    elif regim_fiscal == "micro3":
+        cota_impozit = 0.03
     else:
-        firma = 0.16
-    return tva, firma, div
+        cota_impozit = 0.16
 
+    tva_colectat = vanzari_brute - (vanzari_brute / (1 + cota_tva))
+    vanzari_fara_tva = vanzari_brute / (1 + cota_tva)
+    cheltuieli_fixe_zilnice = (chirie + salarii + utilitati) / 30.0
 
-def calculeaza_food_cost(retete: pd.DataFrame, stoc: pd.DataFrame) -> float:
-    """Food cost mediu ponderat din rețetar și prețuri stoc."""
-    if retete.empty or stoc.empty:
-        return 0.0
-    r = retete.copy()
-    s = stoc.copy()
-    r.columns = [c.lower() for c in r.columns]
-    s.columns = [c.lower() for c in s.columns]
-    necesar = ["preparat", "ingredient", "gramaj", "pret_vanzare"]
-    if not all(c in r.columns for c in necesar):
-        return 0.0
-    total_cost, total_vanzari = 0.0, 0.0
-    for preparat in r["preparat"].unique():
-        ing_prep = r[r["preparat"] == preparat]
-        pv = float(ing_prep["pret_vanzare"].iloc[0])
-        cost = 0.0
-        for _, row in ing_prep.iterrows():
-            match = s[s["produs"] == row["ingredient"]] if "produs" in s.columns else pd.DataFrame()
-            if not match.empty:
-                cost += (float(row["gramaj"]) / 1000) * float(match["pret_unitar"].iloc[0])
-        total_cost += cost
-        total_vanzari += pv
-    return round((total_cost / total_vanzari * 100) if total_vanzari else 0, 2)
+    if food_cost == 0.0:
+        food_cost_efectiv = vanzari_fara_tva * 0.30
+        food_cost_sursa = "estimat (30%)"
+    else:
+        food_cost_efectiv = food_cost
+        food_cost_sursa = "calculat din rețetar"
 
-
-def calculeaza_profit_net(vanzari_brute: float, config: dict) -> dict:
-    """Cascadă completă de calcul profit net după toate taxele."""
-    tva, firma, div = get_cote(config)
-    chirie = float(config.get("chirie", 0))
-    salarii = float(config.get("salarii", 0))
-    utilitati = float(config.get("utilitati", 0))
-
-    tva_col = vanzari_brute - vanzari_brute / (1 + tva)
-    fara_tva = vanzari_brute / (1 + tva)
-    fixe = chirie + salarii + utilitati
-    food = fara_tva * 0.30
-    profit_b = fara_tva - food - fixe
-    imp_f = max(profit_b * firma, 0)
-    dupa_f = profit_b - imp_f
-    imp_d = max(dupa_f * div, 0)
-    net = dupa_f - imp_d
+    profit_brut = vanzari_fara_tva - food_cost_efectiv - cheltuieli_fixe_zilnice
+    impozit_firma = max(profit_brut * cota_impozit, 0.0)
+    profit_dupa_impozit = profit_brut - impozit_firma
+    impozit_dividend = max(profit_dupa_impozit * cota_dividend, 0.0)
+    profit_net_real = profit_dupa_impozit - impozit_dividend
+    marja_neta = (profit_net_real / vanzari_brute * 100) if vanzari_brute > 0 else 0.0
 
     return {
-        "vanzari_brute": vanzari_brute,
-        "tva_colectat": round(tva_col, 2),
-        "vanzari_fara_tva": round(fara_tva, 2),
-        "food_cost": round(food, 2),
-        "cheltuieli_fixe": round(fixe, 2),
-        "profit_brut": round(profit_b, 2),
-        "impozit_firma": round(imp_f, 2),
-        "profit_dupa_firma": round(dupa_f, 2),
-        "impozit_dividend": round(imp_d, 2),
-        "profit_net": round(net, 2),
-        "marja_neta": round((net / vanzari_brute * 100) if vanzari_brute else 0, 2),
+        "vanzari_brute": round(vanzari_brute, 2),
+        "tva_colectat": round(tva_colectat, 2),
+        "vanzari_fara_tva": round(vanzari_fara_tva, 2),
+        "cheltuieli_fixe_zilnice": round(cheltuieli_fixe_zilnice, 2),
+        "food_cost": round(food_cost_efectiv, 2),
+        "food_cost_sursa": food_cost_sursa,
+        "profit_brut": round(profit_brut, 2),
+        "impozit_firma": round(impozit_firma, 2),
+        "profit_dupa_impozit": round(profit_dupa_impozit, 2),
+        "impozit_dividend": round(impozit_dividend, 2),
+        "profit_net_real": round(profit_net_real, 2),
+        "marja_neta": round(marja_neta, 2),
     }
 
-
-def calculeaza_simulator(pret_vanzare: float, ingrediente: list, stoc: pd.DataFrame, config: dict) -> dict:
-    """Profit net real per preparat simulat."""
-    tva, firma, div = get_cote(config)
-    nr_clienti = float(config.get("nr_clienti", 1)) or 1
-    fixe = float(config.get("chirie", 0)) + float(config.get("salarii", 0)) + float(config.get("utilitati", 0))
-    regie = fixe / nr_clienti
-
-    tva_val = pret_vanzare - pret_vanzare / (1 + tva)
-    fara_tva = pret_vanzare / (1 + tva)
-
-    food = 0.0
-    s = stoc.copy()
-    if not s.empty:
-        s.columns = [c.lower() for c in s.columns]
-    for ing in ingrediente:
-        if not s.empty and "produs" in s.columns:
-            match = s[s["produs"].str.lower() == ing["produs"].lower()]
-            if not match.empty:
-                food += (ing["gramaj"] / 1000) * float(match["pret_unitar"].iloc[0])
-
-    dupa_food = fara_tva - food
-    dupa_regie = dupa_food - regie
-    imp_f = max(dupa_regie * firma, 0)
-    dupa_f = dupa_regie - imp_f
-    imp_d = max(dupa_f * div, 0)
-    net = dupa_f - imp_d
-
-    return {
-        "pret_vanzare": round(pret_vanzare, 2),
-        "tva": round(tva_val, 2),
-        "pret_fara_tva": round(fara_tva, 2),
-        "food_cost": round(food, 2),
-        "regie_per_produs": round(regie, 2),
-        "profit_dupa_regie": round(dupa_regie, 2),
-        "impozit_firma": round(imp_f, 2),
-        "profit_dupa_firma": round(dupa_f, 2),
-        "impozit_dividend": round(imp_d, 2),
-        "profit_net": round(net, 2),
-        "marja_neta": round((net / pret_vanzare * 100) if pret_vanzare else 0, 2),
-    }
-
-
-def extrage_factura_cu_ai(imagine_bytes: bytes, mime_type: str) -> list:
-    """OCR factură prin Gemini 1.5 Flash → listă produse."""
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    prompt = """Ești un asistent specializat în extragerea datelor din facturi pentru restaurante din România.
-Analizează această imagine și extrage TOATE produsele/ingredientele.
-Returnează STRICT un JSON valid (fără text suplimentar, fără markdown) cu structura:
-{"produse": [{"produs": "Denumire", "cantitate": 5.0, "unitate": "kg", "pret_unitar": 12.50}]}
-Dacă nu poți identifica cu certitudine unitatea de măsură, folosește "NECUNOSCUT".
-Prețul unitar să fie fără TVA dacă e posibil de identificat."""
-
-    parte_img = {"mime_type": mime_type, "data": base64.b64encode(imagine_bytes).decode()}
+# ─────────────────────────────────────────────
+# AI – SCANARE FACTURĂ
+# ─────────────────────────────────────────────
+def extrage_factura_cu_ai(image_bytes: bytes) -> dict | None:
     try:
-        raspuns = model.generate_content([prompt, parte_img])
-        text = raspuns.text.strip().replace("```json", "").replace("```", "").strip()
-        return json.loads(text).get("produse", [])
+        api_key = st.secrets["GEMINI_API_KEY"]
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+
+        img_b64 = base64.b64encode(image_bytes).decode("utf-8")
+
+        prompt = """Ești un sistem de extragere date din facturi fiscale românești.
+Analizează imaginea și extrage TOATE produsele de pe factură.
+Returnează EXCLUSIV un obiect JSON valid, fără niciun text suplimentar, fără markdown, fără backticks.
+Structura obligatorie:
+{"produse": [{"produs": "Nume produs", "cantitate": 2.0, "unitate": "kg", "pret_unitar": 15.0}]}
+Dacă nu poți extrage un câmp, folosește null pentru text și 0 pentru numere.
+Nu adăuga explicații. Răspunde DOAR cu JSON-ul."""
+
+        response = model.generate_content([
+            {"mime_type": "image/jpeg", "data": img_b64},
+            prompt,
+        ])
+
+        raw = response.text.strip()
+        raw = raw.replace("```json", "").replace("```", "").strip()
+        return json.loads(raw)
     except json.JSONDecodeError:
-        st.error("AI-ul nu a returnat JSON valid. Reîncearcă.")
-        return []
+        st.error("AI-ul nu a returnat un JSON valid. Încearcă din nou cu o imagine mai clară.")
+        return None
     except Exception as e:
-        st.error(f"Eroare Gemini: {e}")
-        return []
+        st.error(f"Eroare AI: {e}")
+        return None
 
-# ──────────────────────────────────────────────
-# SIDEBAR
-# ──────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# COMPONENTE UI CUSTOM
+# ─────────────────────────────────────────────
+def card_metric(titlu: str, valoare: str, sub: str = "", badge: str = "", badge_tip: str = "neutru"):
+    badge_html = ""
+    if badge:
+        if badge_tip == "profit":
+            badge_color = "#e8f5e9"
+            badge_text_color = "#2e7d32"
+        elif badge_tip == "pierdere":
+            badge_color = "#fce8e8"
+            badge_text_color = "#c62828"
+        else:
+            badge_color = "#eef2f7"
+            badge_text_color = "#4a6785"
+        badge_html = f'<span style="display:inline-block;padding:3px 10px;border-radius:20px;background:{badge_color};color:{badge_text_color};font-size:0.72rem;font-weight:500;letter-spacing:0.01em;">{badge}</span>'
 
-with st.sidebar:
-    st.markdown("""
-    <div class="brand-block">
-        <div class="brand-name">◈ Lana</div>
-        <div class="brand-sub">ACQ Advisory · Profitabilitate</div>
+    sub_html = f'<div style="font-size:0.82rem;color:#8a8a99;margin-top:4px;font-weight:400;">{sub}</div>' if sub else ""
+
+    st.markdown(f"""
+    <div style="
+        background:#ffffff;
+        border-radius:16px;
+        border:1px solid #e8e8f0;
+        box-shadow:0 2px 8px rgba(0,0,0,0.02);
+        padding:1.4rem 1.6rem;
+        margin-bottom:0.75rem;
+    ">
+        <div style="font-size:0.78rem;font-weight:500;color:#8a8a99;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:0.6rem;">{titlu}</div>
+        <div style="font-size:2.1rem;font-weight:600;color:#1a3a5c;letter-spacing:-0.03em;line-height:1.1;">{valoare}</div>
+        {sub_html}
+        <div style="margin-top:0.7rem;">{badge_html}</div>
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="section-header">Navigare</div>', unsafe_allow_html=True)
+def linie_cascada(eticheta: str, valoare: float, culoare: str = "#0d0d1a", prefix: str = "−"):
+    semn = "+" if prefix == "+" else "−"
+    val_str = f"{'+ ' if prefix == '+' else '− '}{abs(valoare):,.2f} RON"
+    color_val = "#2e7d32" if prefix == "+" else "#c62828" if valoare > 0 else "#8a8a99"
+    st.markdown(f"""
+    <div style="display:flex;justify-content:space-between;align-items:center;
+        padding:0.55rem 0;border-bottom:1px solid #f0f0f5;">
+        <span style="font-size:0.9rem;color:#4a4a5a;font-weight:400;">{eticheta}</span>
+        <span style="font-size:0.9rem;font-weight:500;color:{color_val};font-variant-numeric:tabular-nums;">{val_str}</span>
+    </div>
+    """, unsafe_allow_html=True)
 
-    pagina = st.radio(
-        "Secțiune",
-        ["📊  Dashboard", "⚙️  Setup Fiscal", "💰  Cheltuieli Fixe", "📄  Scanare Facturi", "🧪  Simulator Sandbox"],
-        label_visibility="collapsed",
+def bon_fiscal(data: dict, titlu: str = "BON FISCAL"):
+    net = data["profit_net_real"]
+    marja = data["marja_neta"]
+    badge_color = "#e8f5e9" if net >= 0 else "#fce8e8"
+    badge_text = "#2e7d32" if net >= 0 else "#c62828"
+
+    st.markdown(f"""
+    <div style="
+        background:#ffffff;
+        border:1px solid #e8e8f0;
+        border-radius:16px;
+        padding:2rem;
+        max-width:420px;
+        font-family:'DM Sans',sans-serif;
+        box-shadow:0 4px 24px rgba(0,0,0,0.04);
+    ">
+        <div style="text-align:center;margin-bottom:1.5rem;">
+            <div style="font-size:0.7rem;font-weight:500;letter-spacing:0.15em;color:#8a8a99;text-transform:uppercase;">{titlu}</div>
+            <div style="font-size:0.78rem;color:#c0c0cc;margin-top:4px;">{datetime.now().strftime("%d.%m.%Y · %H:%M")}</div>
+        </div>
+        <div style="border-top:1px dashed #e8e8f0;border-bottom:1px dashed #e8e8f0;padding:1rem 0;margin-bottom:1rem;">
+            <div style="display:flex;justify-content:space-between;padding:0.3rem 0;font-size:0.88rem;color:#4a4a5a;">
+                <span>Încasări brute</span><span style="font-weight:500;color:#0d0d1a;">{data["vanzari_brute"]:,.2f} RON</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:0.3rem 0;font-size:0.88rem;color:#4a4a5a;">
+                <span>TVA colectat</span><span style="color:#c62828;">− {data["tva_colectat"]:,.2f} RON</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:0.3rem 0;font-size:0.88rem;color:#4a4a5a;">
+                <span>Food Cost</span><span style="color:#c62828;">− {data["food_cost"]:,.2f} RON</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:0.3rem 0;font-size:0.88rem;color:#4a4a5a;">
+                <span>Cheltuieli fixe</span><span style="color:#c62828;">− {data["cheltuieli_fixe_zilnice"]:,.2f} RON</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:0.3rem 0;font-size:0.88rem;color:#4a4a5a;">
+                <span>Impozit firmă</span><span style="color:#c62828;">− {data["impozit_firma"]:,.2f} RON</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:0.3rem 0;font-size:0.88rem;color:#4a4a5a;">
+                <span>Impozit dividende</span><span style="color:#c62828;">− {data["impozit_dividend"]:,.2f} RON</span>
+            </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem 0;">
+            <span style="font-size:1rem;font-weight:600;color:#0d0d1a;">BANI ÎN MÂNĂ</span>
+            <span style="font-size:1.6rem;font-weight:700;color:#1a3a5c;letter-spacing:-0.02em;">{net:,.2f} RON</span>
+        </div>
+        <div style="text-align:right;margin-top:0.5rem;">
+            <span style="display:inline-block;padding:4px 12px;border-radius:20px;background:{badge_color};color:{badge_text};font-size:0.78rem;font-weight:500;">
+                Marjă netă {marja:.1f}%
+            </span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────
+# SIDEBAR
+# ─────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("""
+    <div style="margin-bottom:2rem;padding-bottom:1.5rem;border-bottom:1px solid #ebebf0;">
+        <div style="font-size:1.8rem;font-weight:700;color:#0d0d1a;letter-spacing:-0.03em;">◈ Lana</div>
+        <div style="font-size:0.68rem;font-weight:500;color:#b0b0be;letter-spacing:0.18em;margin-top:4px;text-transform:uppercase;">ACQ Advisory · Consulting</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    sectiune = st.radio(
+        "NAVIGARE",
+        [
+            "📊  Dashboard",
+            "⚙️  Setări Fiscale",
+            "📄  Scanare Facturi",
+            "📥  Vânzări Zilnice",
+            "🧪  Simulator Sandbox",
+        ],
+        label_visibility="visible",
     )
 
-    st.markdown('<div class="section-header">Status</div>', unsafe_allow_html=True)
-    st.markdown(
-        f'<div style="font-size:12px;color:#8888a0;">Conectat · {datetime.now().strftime("%d %b %Y, %H:%M")}</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown("""
+    <div style="margin-top:auto;padding-top:2rem;border-top:1px solid #ebebf0;margin-top:3rem;">
+        <div style="font-size:0.72rem;color:#c0c0cc;font-weight:400;">Lana ADVISORY</div>
+        <div style="font-size:0.8rem;font-weight:500;color:#8a8a99;margin-top:2px;">79€ / lună</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-# ──────────────────────────────────────────────
-# CONEXIUNE
-# ──────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# SECȚIUNEA: DASHBOARD
+# ─────────────────────────────────────────────
+if sectiune == "📊  Dashboard":
+    st.markdown('<div class="section-title">Dashboard</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-sub">Situația financiară zilnică · actualizată la ultima închidere</div>', unsafe_allow_html=True)
 
-try:
-    spreadsheet = conecteaza_gsheets()
-    conexiune_ok = True
-except Exception as e:
-    conexiune_ok = False
-    st.error(f"⚠️ Eroare conectare Google Sheets: {e}")
+    cfg = citeste_config()
+    stoc_df = citeste_stoc()
+    vanzari_df = citeste_vanzari()
+    retetar_df = citeste_retetar()
 
-# ──────────────────────────────────────────────
-# PAGINA: DASHBOARD
-# ──────────────────────────────────────────────
-
-if "📊" in pagina:
-    st.markdown("## Dashboard")
-    st.markdown('<div style="color:#9999b0;margin-top:-8px;margin-bottom:28px;font-size:14px;">Imagine financiară în timp real</div>', unsafe_allow_html=True)
-
-    if not conexiune_ok:
-        st.warning("Conexiunea la Google Sheets nu este disponibilă.")
+    # Filtrare vânzări pe ziua curentă
+    azi = date.today().strftime("%Y-%m-%d")
+    if not vanzari_df.empty and "Data" in vanzari_df.columns:
+        vanzari_azi = vanzari_df[vanzari_df["Data"].astype(str).str.startswith(azi)]
     else:
-        config = citeste_config(spreadsheet)
-        df_vanzari = citeste_foaie(spreadsheet, "Vanzari")
-        df_retete = citeste_foaie(spreadsheet, "Retetar")
-        df_stoc = citeste_foaie(spreadsheet, "Stoc")
+        vanzari_azi = pd.DataFrame(columns=["Preparat", "Cantitate_Vanduta", "Data"])
 
-        vanzari_totale = 0.0
-        if not df_vanzari.empty:
-            df_vanzari.columns = [c.lower() for c in df_vanzari.columns]
-            if "valoare" in df_vanzari.columns:
-                vanzari_totale = float(df_vanzari["valoare"].sum())
-            elif "total" in df_vanzari.columns:
-                vanzari_totale = float(df_vanzari["total"].sum())
+    # Calcul vânzări brute din prețuri în rețetar
+    vanzari_brute = 0.0
+    if not vanzari_azi.empty and not retetar_df.empty:
+        for _, row in vanzari_azi.iterrows():
+            preparat = str(row.get("Preparat", "")).lower().strip()
+            cantitate = 0.0
+            try:
+                cantitate = float(row.get("Cantitate_Vanduta", 0))
+            except (ValueError, TypeError):
+                pass
+            pret_match = retetar_df[retetar_df["Preparat"].str.lower().str.strip() == preparat]
+            if not pret_match.empty:
+                try:
+                    pret = float(pret_match.iloc[0].get("Pret_Vanzare", 0))
+                    vanzari_brute += cantitate * pret
+                except (ValueError, TypeError):
+                    pass
 
-        rez = calculeaza_profit_net(vanzari_totale, config)
-        fc_pct = calculeaza_food_cost(df_retete, df_stoc)
-        fixe_total = float(config.get("chirie", 0)) + float(config.get("salarii", 0)) + float(config.get("utilitati", 0))
+    food_cost_zi = calculeaza_food_cost_zilnic(vanzari_azi, retetar_df, stoc_df)
+    cascada = calculeaza_cascada(vanzari_brute, food_cost_zi, cfg)
 
-        col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns([1.2, 1, 1, 1])
+    with col1:
+        marja = cascada["marja_neta"]
+        badge_tip = "profit" if cascada["profit_net_real"] >= 0 else "pierdere"
+        card_metric(
+            "Profit Net Real · Bani în mână",
+            f"{cascada['profit_net_real']:,.2f} RON",
+            sub=f"Ziua de {azi}",
+            badge=f"Marjă {marja:.1f}%",
+            badge_tip=badge_tip,
+        )
+    with col2:
+        fc_pct = (cascada["food_cost"] / cascada["vanzari_fara_tva"] * 100) if cascada["vanzari_fara_tva"] > 0 else 0
+        card_metric(
+            "Food Cost Mediu",
+            f"{cascada['food_cost']:,.2f} RON",
+            sub=f"{fc_pct:.1f}% din vânzări nete · {cascada['food_cost_sursa']}",
+        )
+    with col3:
+        total_op = cascada["cheltuieli_fixe_zilnice"] + cascada["tva_colectat"] + cascada["impozit_firma"] + cascada["impozit_dividend"]
+        card_metric(
+            "Cheltuieli Operative Totale",
+            f"{total_op:,.2f} RON",
+            sub="Taxe + Fixe zilnice",
+        )
+    with col4:
+        plan_html = """
+        <div style="background:#ffffff;border-radius:16px;border:1px solid #e8e8f0;
+            box-shadow:0 2px 8px rgba(0,0,0,0.02);padding:1.4rem 1.6rem;height:100%;">
+            <div style="font-size:0.78rem;font-weight:500;color:#8a8a99;letter-spacing:0.06em;
+                text-transform:uppercase;margin-bottom:0.6rem;">Plan Activ</div>
+            <div style="font-size:1.1rem;font-weight:600;color:#1a3a5c;">Lana ADVISORY</div>
+            <div style="font-size:0.88rem;color:#8a8a99;margin-top:4px;">79€ / lună</div>
+            <div style="margin-top:0.9rem;font-size:0.78rem;color:#b0b0be;">Consultant digital de buzunar</div>
+        </div>
+        """
+        st.markdown(plan_html, unsafe_allow_html=True)
 
+    st.markdown("<div style='height:2rem;'></div>", unsafe_allow_html=True)
+
+    col_left, col_right = st.columns([1.2, 1])
+    with col_left:
+        st.markdown("""
+        <div style="background:#ffffff;border-radius:16px;border:1px solid #e8e8f0;
+            box-shadow:0 2px 8px rgba(0,0,0,0.02);padding:1.6rem 2rem;">
+            <div style="font-size:0.78rem;font-weight:500;color:#8a8a99;letter-spacing:0.06em;
+                text-transform:uppercase;margin-bottom:1.2rem;">Cascada Financiară Zilnică</div>
+        """, unsafe_allow_html=True)
+
+        linie_cascada("Încasări brute (cu TVA)", cascada["vanzari_brute"], prefix="+")
+        linie_cascada("TVA colectat (→ ANAF)", cascada["tva_colectat"])
+        linie_cascada("Food Cost ingrediente", cascada["food_cost"])
+        linie_cascada("Cheltuieli fixe zilnice", cascada["cheltuieli_fixe_zilnice"])
+
+        st.markdown("""
+        <div style="display:flex;justify-content:space-between;align-items:center;
+            padding:0.55rem 0;border-bottom:1px solid #e8e8f0;">
+            <span style="font-size:0.9rem;color:#0d0d1a;font-weight:500;">Profit brut operațional</span>
+            <span style="font-size:0.9rem;font-weight:600;color:#1a3a5c;">""" + f"{cascada['profit_brut']:,.2f} RON" + """</span>
+        </div>""", unsafe_allow_html=True)
+
+        linie_cascada("Impozit firmă", cascada["impozit_firma"])
+        linie_cascada("Impozit dividende", cascada["impozit_dividend"])
+
+        net = cascada["profit_net_real"]
+        net_color = "#2e7d32" if net >= 0 else "#c62828"
+        st.markdown(f"""
+        <div style="display:flex;justify-content:space-between;align-items:center;
+            padding:0.9rem 0;margin-top:0.5rem;">
+            <span style="font-size:1rem;font-weight:700;color:#0d0d1a;">◈ Bani în mână (net real)</span>
+            <span style="font-size:1.1rem;font-weight:700;color:{net_color};">{net:,.2f} RON</span>
+        </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_right:
+        if not vanzari_azi.empty:
+            st.markdown("""
+            <div style="background:#ffffff;border-radius:16px;border:1px solid #e8e8f0;
+                box-shadow:0 2px 8px rgba(0,0,0,0.02);padding:1.6rem 2rem;">
+                <div style="font-size:0.78rem;font-weight:500;color:#8a8a99;letter-spacing:0.06em;
+                    text-transform:uppercase;margin-bottom:1rem;">Vânzări de azi</div>
+            """, unsafe_allow_html=True)
+            for _, row in vanzari_azi.iterrows():
+                st.markdown(f"""
+                <div style="display:flex;justify-content:space-between;
+                    padding:0.4rem 0;border-bottom:1px solid #f5f5f8;font-size:0.88rem;">
+                    <span style="color:#4a4a5a;">{row.get('Preparat','')}</span>
+                    <span style="color:#1a3a5c;font-weight:500;">{row.get('Cantitate_Vanduta',0)} buc</span>
+                </div>
+                """, unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div style="background:#ffffff;border-radius:16px;border:1px solid #e8e8f0;
+                box-shadow:0 2px 8px rgba(0,0,0,0.02);padding:2rem;text-align:center;">
+                <div style="font-size:2rem;margin-bottom:0.5rem;">📭</div>
+                <div style="font-size:0.9rem;color:#8a8a99;">Nicio vânzare înregistrată azi</div>
+                <div style="font-size:0.8rem;color:#c0c0cc;margin-top:4px;">Mergi la Vânzări Zilnice pentru a înregistra</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────
+# SECȚIUNEA: SETĂRI FISCALE
+# ─────────────────────────────────────────────
+elif sectiune == "⚙️  Setări Fiscale":
+    st.markdown('<div class="section-title">Setări Fiscale & Cheltuieli Fixe</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-sub">Configurează parametrii fiscali și cheltuielile lunare ale afacerii tale</div>', unsafe_allow_html=True)
+
+    cfg = citeste_config()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("""
+        <div style="font-size:0.78rem;font-weight:500;color:#8a8a99;letter-spacing:0.06em;
+            text-transform:uppercase;margin-bottom:1rem;">Regim Fiscal</div>
+        """, unsafe_allow_html=True)
+
+        regim_options = {"Micro 1%": "micro1", "Micro 3%": "micro3", "Profit 16%": "profit16"}
+        regim_actual = cfg.get("regim_fiscal", "micro1")
+        regim_label_actual = {v: k for k, v in regim_options.items()}.get(regim_actual, "Micro 1%")
+        regim_sel = st.selectbox("Regim fiscal", list(regim_options.keys()), index=list(regim_options.keys()).index(regim_label_actual), label_visibility="collapsed")
+
+        tva_options = {"TVA 9% (restaurante)": 0.09, "TVA 19% (standard)": 0.19}
+        tva_actual = cfg.get("cota_tva", 0.09)
+        tva_label_actual = {v: k for k, v in tva_options.items()}.get(tva_actual, "TVA 9% (restaurante)")
+        tva_sel = st.selectbox("Cotă TVA", list(tva_options.keys()), index=list(tva_options.keys()).index(tva_label_actual), label_visibility="collapsed")
+
+        div_options = {"Impozit dividend 8%": 0.08, "Impozit dividend 10%": 0.10}
+        div_actual = cfg.get("cota_dividend", 0.08)
+        div_label_actual = {v: k for k, v in div_options.items()}.get(div_actual, "Impozit dividend 8%")
+        div_sel = st.selectbox("Impozit dividende", list(div_options.keys()), index=list(div_options.keys()).index(div_label_actual), label_visibility="collapsed")
+
+    with col2:
+        st.markdown("""
+        <div style="font-size:0.78rem;font-weight:500;color:#8a8a99;letter-spacing:0.06em;
+            text-transform:uppercase;margin-bottom:1rem;">Cheltuieli Lunare Fixe (RON)</div>
+        """, unsafe_allow_html=True)
+
+        chirie = st.number_input("Chirie lunară", value=float(cfg.get("chirie_lunara", 0.0)), min_value=0.0, step=100.0, format="%.2f")
+        salarii = st.number_input("Salarii totale brute", value=float(cfg.get("salarii_lunare", 0.0)), min_value=0.0, step=100.0, format="%.2f")
+        utilitati = st.number_input("Utilități (curent, gaz, apă)", value=float(cfg.get("utilitati_lunare", 0.0)), min_value=0.0, step=100.0, format="%.2f")
+
+    st.markdown("<div style='height:1.5rem;'></div>", unsafe_allow_html=True)
+
+    nr_clienti = st.number_input(
+        "Număr estimat clienți/bonuri pe lună",
+        value=int(cfg.get("nr_clienti_lunar", 500)),
+        min_value=1, step=10,
+    )
+
+    total_fixe = chirie + salarii + utilitati
+    regie_per_bon = total_fixe / nr_clienti if nr_clienti > 0 else 0
+
+    st.markdown(f"""
+    <div style="background:#f7f7f9;border-radius:12px;padding:1rem 1.4rem;margin:1rem 0;
+        border:1px solid #e8e8f0;display:inline-block;">
+        <span style="font-size:0.8rem;color:#8a8a99;">Regie fixă per bon: </span>
+        <span style="font-family:'DM Mono',monospace;font-size:1.1rem;font-weight:600;
+            color:#1a3a5c;letter-spacing:0.02em;">{regie_per_bon:.2f} RON</span>
+        <span style="font-size:0.78rem;color:#b0b0be;margin-left:6px;">/ client</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
+
+    if st.button("Salvează în Config →", type="primary"):
+        new_cfg = {
+            "regim_fiscal": regim_options[regim_sel],
+            "cota_tva": tva_options[tva_sel],
+            "cota_dividend": div_options[div_sel],
+            "chirie_lunara": chirie,
+            "salarii_lunare": salarii,
+            "utilitati_lunare": utilitati,
+            "nr_clienti_lunar": nr_clienti,
+        }
+        salveaza_config(new_cfg)
+        st.success("✓ Configurația a fost salvată cu succes.")
+
+# ─────────────────────────────────────────────
+# SECȚIUNEA: SCANARE FACTURI
+# ─────────────────────────────────────────────
+elif sectiune == "📄  Scanare Facturi":
+    st.markdown('<div class="section-title">Scanare Facturi & Alerte de Preț</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-sub">Încarcă o imagine a facturii. AI-ul extrage produsele automat.</div>', unsafe_allow_html=True)
+
+    uploaded = st.file_uploader("Încarcă imagine factură", type=["jpg", "jpeg", "png", "webp"])
+
+    if "produse_factura" not in st.session_state:
+        st.session_state.produse_factura = []
+    if "alerte_pret" not in st.session_state:
+        st.session_state.alerte_pret = []
+
+    if uploaded:
+        img_bytes = uploaded.read()
+        col_img, col_proc = st.columns([1, 2])
+        with col_img:
+            image = Image.open(io.BytesIO(img_bytes))
+            st.image(image, use_container_width=True, caption="Factura încărcată")
+
+        with col_proc:
+            if st.button("🔍 Extrage cu AI"):
+                with st.spinner("Gemini analizează factura..."):
+                    rezultat = extrage_factura_cu_ai(img_bytes)
+                    if rezultat and "produse" in rezultat:
+                        st.session_state.produse_factura = rezultat["produse"]
+                        st.success(f"✓ {len(rezultat['produse'])} produse identificate.")
+                    else:
+                        st.session_state.produse_factura = []
+
+    if st.session_state.produse_factura:
+        stoc_df = citeste_stoc()
+        st.markdown("<hr>", unsafe_allow_html=True)
+        st.markdown("""
+        <div style="font-size:0.78rem;font-weight:500;color:#8a8a99;letter-spacing:0.06em;
+            text-transform:uppercase;margin-bottom:1rem;">Produse extrase · Verifică și editează</div>
+        """, unsafe_allow_html=True)
+
+        alerte = []
+        produse_editate = []
+        are_unitati_invalide = False
+
+        for i, prod in enumerate(st.session_state.produse_factura):
+            with st.container():
+                col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+                with col1:
+                    nume = st.text_input("Produs", value=str(prod.get("produs", "")), key=f"pnume_{i}", label_visibility="collapsed")
+                with col2:
+                    cant = st.number_input("Cantitate", value=float(prod.get("cantitate") or 0), key=f"pcant_{i}", label_visibility="collapsed", min_value=0.0)
+                with col3:
+                    unitate_ai = str(prod.get("unitate", "")).lower().strip()
+                    unitate_invalida = unitate_ai not in UNITATI_CUNOSCUTE
+                    unitate = st.text_input(
+                        "Unitate",
+                        value=unitate_ai if not unitate_invalida else "",
+                        key=f"punit_{i}",
+                        label_visibility="collapsed",
+                        placeholder="kg/g/l/buc" if unitate_invalida else unitate_ai,
+                    )
+                    if unitate_invalida:
+                        st.markdown("""
+                        <div style="font-size:0.75rem;color:#e57373;margin-top:2px;">
+                            ⚠ Unitate necunoscută · introdu manual
+                        </div>""", unsafe_allow_html=True)
+                        are_unitati_invalide = True
+                    if unitate and unitate.lower().strip() not in UNITATI_CUNOSCUTE:
+                        are_unitati_invalide = True
+                with col4:
+                    pret = st.number_input("Preț/U", value=float(prod.get("pret_unitar") or 0), key=f"ppret_{i}", label_visibility="collapsed", min_value=0.0)
+
+                # Alertă preț
+                if not stoc_df.empty and "Produs" in stoc_df.columns:
+                    match = stoc_df[stoc_df["Produs"].str.lower().str.strip() == str(nume).lower().strip()]
+                    if not match.empty:
+                        try:
+                            pret_vechi = float(match.iloc[0].get("Pret_Unitar", 0))
+                            if pret > pret_vechi and pret_vechi > 0:
+                                alerte.append({
+                                    "produs": nume,
+                                    "pret_vechi": pret_vechi,
+                                    "pret_nou": pret,
+                                })
+                        except (ValueError, TypeError):
+                            pass
+
+                produse_editate.append({
+                    "Produs": nume,
+                    "Cantitate": cant,
+                    "Unitate": unitate,
+                    "Pret_Unitar": pret,
+                    "Data": date.today().strftime("%Y-%m-%d"),
+                })
+
+        st.session_state.alerte_pret = alerte
+
+        for alerta in alerte:
+            st.markdown(f"""
+            <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:12px;
+                padding:1rem 1.4rem;margin:0.5rem 0;font-size:0.9rem;">
+                ⚠️ <strong>{alerta['produs']}</strong> s-a scumpit de la
+                <strong>{alerta['pret_vechi']:.2f}</strong> la
+                <strong>{alerta['pret_nou']:.2f} RON</strong>.
+                Profitul preparatelor care conțin acest ingredient a scăzut.
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
+
+        salvare_disabled = are_unitati_invalide
+        if salvare_disabled:
+            st.markdown("""
+            <div style="font-size:0.85rem;color:#e57373;margin-bottom:0.5rem;">
+                Completează unitățile lipsă pentru a activa salvarea.
+            </div>""", unsafe_allow_html=True)
+
+        btn_col, _ = st.columns([1, 3])
+        with btn_col:
+            if st.button("Salvează în Stoc →", disabled=salvare_disabled, type="primary"):
+                stoc_nou = pd.DataFrame(produse_editate)
+                if not stoc_df.empty:
+                    # Actualizează sau adaugă
+                    for _, row in stoc_nou.iterrows():
+                        mask = stoc_df["Produs"].str.lower().str.strip() == str(row["Produs"]).lower().strip()
+                        if mask.any():
+                            idx = stoc_df[mask].index[0]
+                            stoc_df.at[idx, "Cantitate"] = row["Cantitate"]
+                            stoc_df.at[idx, "Pret_Unitar"] = row["Pret_Unitar"]
+                            stoc_df.at[idx, "Data"] = row["Data"]
+                        else:
+                            stoc_df = pd.concat([stoc_df, pd.DataFrame([row])], ignore_index=True)
+                    salveaza_stoc(stoc_df)
+                else:
+                    salveaza_stoc(stoc_nou)
+                st.success(f"✓ {len(produse_editate)} produse salvate în stoc.")
+                st.session_state.produse_factura = []
+                st.rerun()
+
+# ─────────────────────────────────────────────
+# SECȚIUNEA: VÂNZĂRI ZILNICE
+# ─────────────────────────────────────────────
+elif sectiune == "📥  Vânzări Zilnice":
+    st.markdown('<div class="section-title">Înregistrare Vânzări Zilnice</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-sub">Introdu ce ai vândut azi. Stocul se actualizează automat.</div>', unsafe_allow_html=True)
+
+    retetar_df = citeste_retetar()
+    stoc_df = citeste_stoc()
+
+    preparate_disponibile = []
+    if not retetar_df.empty and "Preparat" in retetar_df.columns:
+        preparate_disponibile = sorted(retetar_df["Preparat"].dropna().unique().tolist())
+
+    if "vanzari_zi" not in st.session_state:
+        st.session_state.vanzari_zi = [{"preparat": "", "cantitate": 0}]
+
+    def adauga_preparat():
+        st.session_state.vanzari_zi.append({"preparat": "", "cantitate": 0})
+
+    if st.button("+ Adaugă preparat"):
+        adauga_preparat()
+
+    vanzari_input = []
+    for i, item in enumerate(st.session_state.vanzari_zi):
+        col1, col2 = st.columns([2, 1])
         with col1:
-            badge = "metric-badge-green" if rez["profit_net"] >= 0 else "metric-badge-red"
-            semn = "+" if rez["profit_net"] >= 0 else ""
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-label">Profit Net Real</div>
-                <div class="metric-value-accent">{rez['profit_net']:,.0f} <span style="font-size:22px;font-weight:400">RON</span></div>
-                <div class="metric-sub">Bani efectiv în mână, după toate taxele</div>
-                <div class="{badge}">{semn}{rez['marja_neta']}% marjă netă</div>
-            </div>""", unsafe_allow_html=True)
-
+            if preparate_disponibile:
+                prep = st.selectbox(
+                    "Preparat",
+                    options=["— alege —"] + preparate_disponibile,
+                    key=f"vprep_{i}",
+                    label_visibility="collapsed",
+                )
+            else:
+                prep = st.text_input("Preparat", value=item.get("preparat", ""), key=f"vprep_{i}", label_visibility="collapsed", placeholder="Nume preparat")
         with col2:
-            fc_badge = "metric-badge-green" if fc_pct <= 30 else "metric-badge-red"
-            fc_label = "Optim ≤30%" if fc_pct <= 30 else "Atenție >30%"
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-label">Food Cost Mediu</div>
-                <div class="metric-value">{fc_pct if fc_pct > 0 else "—"}<span style="font-size:22px;font-weight:400"> %</span></div>
-                <div class="metric-sub">Calculat din rețetar și stoc curent</div>
-                <div class="{fc_badge}">{fc_label}</div>
-            </div>""", unsafe_allow_html=True)
+            cant = st.number_input("Cantitate", value=int(item.get("cantitate", 0)), min_value=0, step=1, key=f"vcant_{i}", label_visibility="collapsed")
 
-        with col3:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-label">Cheltuieli Operative Totale</div>
-                <div class="metric-value">{fixe_total:,.0f} <span style="font-size:22px;font-weight:400">RON</span></div>
-                <div class="metric-sub">Chirie + Salarii + Utilități / lună</div>
-                <div style="margin-top:10px;font-size:12px;color:#aaaabc;">Vânzări brute: {vanzari_totale:,.0f} RON</div>
-            </div>""", unsafe_allow_html=True)
+        if prep and prep != "— alege —":
+            vanzari_input.append({"Preparat": prep, "Cantitate_Vanduta": cant})
 
-        st.markdown('<div class="section-header" style="margin-top:36px;">Defalcare Financiară</div>', unsafe_allow_html=True)
+    st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
+
+    data_inchidere = st.date_input("Data închiderii de zi", value=date.today())
+
+    if st.button("Înregistrează Închiderea de Zi →", type="primary"):
+        if not vanzari_input:
+            st.warning("Nu ai introdus niciun preparat.")
+        else:
+            rows_de_salvat = [
+                {
+                    "Preparat": v["Preparat"],
+                    "Cantitate_Vanduta": v["Cantitate_Vanduta"],
+                    "Data": data_inchidere.strftime("%Y-%m-%d"),
+                }
+                for v in vanzari_input
+                if v["Cantitate_Vanduta"] > 0
+            ]
+            salveaza_vanzari(rows_de_salvat)
+
+            # Scade din stoc
+            if not retetar_df.empty and not stoc_df.empty:
+                stoc_actualizat = stoc_df.copy()
+                for v in vanzari_input:
+                    preparat = str(v["Preparat"]).lower().strip()
+                    cantitate_vanduta = float(v["Cantitate_Vanduta"])
+                    ingrediente = retetar_df[retetar_df["Preparat"].str.lower().str.strip() == preparat]
+                    for _, irow in ingrediente.iterrows():
+                        ingredient = str(irow.get("Ingredient", "")).lower().strip()
+                        try:
+                            gramaj_kg = float(irow.get("Gramaj", 0)) / 1000.0
+                        except (ValueError, TypeError):
+                            gramaj_kg = 0.0
+                        total_consum = cantitate_vanduta * gramaj_kg
+                        mask = stoc_actualizat["Produs"].str.lower().str.strip() == ingredient
+                        if mask.any():
+                            idx = stoc_actualizat[mask].index[0]
+                            cant_curenta = 0.0
+                            try:
+                                cant_curenta = float(stoc_actualizat.at[idx, "Cantitate"])
+                            except (ValueError, TypeError):
+                                pass
+                            stoc_actualizat.at[idx, "Cantitate"] = max(0, round(cant_curenta - total_consum, 4))
+                salveaza_stoc(stoc_actualizat)
+
+            st.success(f"✓ {len(rows_de_salvat)} preparate înregistrate. Stocul a fost actualizat.")
+            st.session_state.vanzari_zi = [{"preparat": "", "cantitate": 0}]
+            st.rerun()
+
+# ─────────────────────────────────────────────
+# SECȚIUNEA: SIMULATOR SANDBOX
+# ─────────────────────────────────────────────
+elif sectiune == "🧪  Simulator Sandbox":
+    st.markdown('<div class="section-title">Simulator Sandbox</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-sub">Testează profitabilitatea unui preparat nou înainte de a-l pune în meniu.</div>', unsafe_allow_html=True)
+
+    cfg = citeste_config()
+    stoc_df = citeste_stoc()
+
+    produse_stoc = []
+    if not stoc_df.empty and "Produs" in stoc_df.columns:
+        produse_stoc = sorted(stoc_df["Produs"].dropna().unique().tolist())
+
+    col1, col2 = st.columns(2)
+    with col1:
+        nume_preparat = st.text_input("Nume preparat", placeholder="ex: Burger clasic")
+    with col2:
+        pret_vanzare = st.number_input("Preț de vânzare dorit (cu TVA) · RON", min_value=0.0, step=0.5, format="%.2f")
+
+    nr_ingrediente = st.number_input("Număr ingrediente", min_value=1, max_value=20, value=3, step=1)
+
+    st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
+    st.markdown("""
+    <div style="font-size:0.78rem;font-weight:500;color:#8a8a99;letter-spacing:0.06em;
+        text-transform:uppercase;margin-bottom:0.8rem;">Ingrediente & Gramaje</div>
+    """, unsafe_allow_html=True)
+
+    ingrediente_sim = []
+    for i in range(int(nr_ingrediente)):
         col_a, col_b = st.columns([2, 1])
         with col_a:
-            df_def = pd.DataFrame({
-                "Component": ["Vânzări Brute", "− TVA", "− Food Cost (~30%)", "− Cheltuieli Fixe", "− Impozit Firmă", "− Impozit Dividend", "= Profit Net"],
-                "Valoare (RON)": [
-                    f"{rez['vanzari_brute']:,.2f}", f"{rez['tva_colectat']:,.2f}",
-                    f"{rez['food_cost']:,.2f}", f"{rez['cheltuieli_fixe']:,.2f}",
-                    f"{rez['impozit_firma']:,.2f}", f"{rez['impozit_dividend']:,.2f}",
-                    f"{rez['profit_net']:,.2f}",
-                ]
-            })
-            st.dataframe(df_def, use_container_width=True, hide_index=True)
+            if produse_stoc:
+                ing = st.selectbox("Ingredient", options=["— alege —"] + produse_stoc, key=f"sing_{i}", label_visibility="collapsed")
+            else:
+                ing = st.text_input("Ingredient", key=f"sing_{i}", label_visibility="collapsed", placeholder="Ingredient")
         with col_b:
-            st.markdown(f"""
-            <div class="metric-card" style="margin-top:0">
-                <div class="metric-label">Configurare Fiscală</div>
-                <div style="font-size:13px;color:#555;line-height:2.2;">
-                    <b>Firmă:</b> {config.get('tip_impozit','—')}<br>
-                    <b>TVA:</b> {config.get('cota_tva','—')}<br>
-                    <b>Dividend:</b> {config.get('impozit_dividend','—')}<br>
-                    <b>Clienți/lună:</b> {config.get('nr_clienti','—')}
-                </div>
-            </div>""", unsafe_allow_html=True)
+            gram = st.number_input("Gramaj (g)", min_value=0.0, step=1.0, key=f"sgram_{i}", label_visibility="collapsed")
 
-# ──────────────────────────────────────────────
-# PAGINA: SETUP FISCAL
-# ──────────────────────────────────────────────
+        if ing and ing != "— alege —" and gram > 0:
+            ingrediente_sim.append({"ingredient": ing, "gramaj_g": gram})
 
-elif "⚙️" in pagina:
-    st.markdown("## Setup Fiscal")
-    st.markdown('<div style="color:#9999b0;margin-top:-8px;margin-bottom:28px;font-size:14px;">Parametri fiscali conform legislației din România</div>', unsafe_allow_html=True)
+    st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 
-    if not conexiune_ok:
-        st.warning("Conexiunea la Google Sheets nu este disponibilă.")
-    else:
-        config = citeste_config(spreadsheet)
-        st.markdown('<div class="section-header">Regim Fiscal</div>', unsafe_allow_html=True)
-        col1, col2, col3 = st.columns(3)
+    if st.button("Calculează Profitabilitatea →", type="primary"):
+        if not nume_preparat or pret_vanzare <= 0:
+            st.warning("Completează numele preparatului și prețul de vânzare.")
+        elif not ingrediente_sim:
+            st.warning("Adaugă cel puțin un ingredient cu gramaj.")
+        else:
+            # Calcul food cost
+            food_cost_preparat = 0.0
+            stoc_index = {}
+            if not stoc_df.empty:
+                for _, row in stoc_df.iterrows():
+                    key = str(row.get("Produs", "")).lower().strip()
+                    try:
+                        stoc_index[key] = float(row.get("Pret_Unitar", 0))
+                    except (ValueError, TypeError):
+                        stoc_index[key] = 0.0
 
-        with col1:
-            opts_imp = ["Micro 1%", "Micro 3%", "Profit 16%"]
-            val_imp = config.get("tip_impozit", "Micro 1%")
-            tip_impozit = st.selectbox("Tip Impozit pe Venit", opts_imp,
-                index=opts_imp.index(val_imp) if val_imp in opts_imp else 0,
-                help="Micro 1% — cu cel puțin un angajat. Micro 3% — fără angajat. Profit 16% — firmă mare.")
+            for item in ingrediente_sim:
+                key = str(item["ingredient"]).lower().strip()
+                pret_ing = stoc_index.get(key, 0.0)
+                gramaj_kg = item["gramaj_g"] / 1000.0
+                food_cost_preparat += gramaj_kg * pret_ing
 
-        with col2:
-            opts_tva = ["9%", "19%"]
-            val_tva = str(config.get("cota_tva", "9%"))
-            cota_tva = st.selectbox("Cotă TVA", opts_tva,
-                index=opts_tva.index(val_tva) if val_tva in opts_tva else 0,
-                help="9% alimente. 19% servicii restaurant cu alcool.")
+            # Regie fixă per preparat
+            nr_clienti = cfg.get("nr_clienti_lunar", 500)
+            chirie = cfg.get("chirie_lunara", 0.0)
+            salarii = cfg.get("salarii_lunare", 0.0)
+            utilitati = cfg.get("utilitati_lunare", 0.0)
+            total_fixe = chirie + salarii + utilitati
+            regie_per_preparat = total_fixe / float(nr_clienti) if nr_clienti > 0 else 0
 
-        with col3:
-            opts_div = ["8%", "10%"]
-            val_div = str(config.get("impozit_dividend", "8%"))
-            imp_div = st.selectbox("Impozit Dividend", opts_div,
-                index=opts_div.index(val_div) if val_div in opts_div else 0)
+            # Cascadă fiscală pentru 1 preparat
+            cascada_sim = calculeaza_cascada(
+                vanzari_brute=pret_vanzare,
+                food_cost=food_cost_preparat + regie_per_preparat,
+                cfg=cfg,
+            )
 
-        st.markdown("<hr>", unsafe_allow_html=True)
-        if st.button("Salvează Configurarea Fiscală"):
-            if all([
-                actualizeaza_config(spreadsheet, "tip_impozit", tip_impozit),
-                actualizeaza_config(spreadsheet, "cota_tva", cota_tva),
-                actualizeaza_config(spreadsheet, "impozit_dividend", imp_div),
-            ]):
-                st.success("✓ Configurare fiscală salvată.")
-                st.cache_resource.clear()
+            # Override food_cost în cascadă pentru afișare corectă
+            cascada_sim["food_cost"] = round(food_cost_preparat, 2)
+            cascada_sim["cheltuieli_fixe_zilnice"] = round(regie_per_preparat, 2)
 
-# ──────────────────────────────────────────────
-# PAGINA: CHELTUIELI FIXE
-# ──────────────────────────────────────────────
+            col_bon, col_rec = st.columns([1, 1])
+            with col_bon:
+                bon_fiscal(cascada_sim, titlu=f"SIMULARE · {nume_preparat.upper()}")
 
-elif "💰" in pagina:
-    st.markdown("## Cheltuieli Fixe")
-    st.markdown('<div style="color:#9999b0;margin-top:-8px;margin-bottom:28px;font-size:14px;">Costuri operative lunare și volum estimat</div>', unsafe_allow_html=True)
+            with col_rec:
+                marja = cascada_sim["marja_neta"]
+                net = cascada_sim["profit_net_real"]
 
-    if not conexiune_ok:
-        st.warning("Conexiunea la Google Sheets nu este disponibilă.")
-    else:
-        config = citeste_config(spreadsheet)
-        st.markdown('<div class="section-header">Costuri Lunare (RON)</div>', unsafe_allow_html=True)
-        col1, col2 = st.columns(2)
+                if marja < 10:
+                    # Calcul preț recomandat pentru marjă 20%
+                    # net_dorit = pret_rec * 0.20
+                    # rezolvăm: pret_rec brut astfel încât marja_neta=20%
+                    # Aproximare: pret_rec = (food_cost + regie) / (1 - 0.20 - tax_rate)
+                    cota_tva = cfg.get("cota_tva", 0.09)
+                    cota_div = cfg.get("cota_dividend", 0.08)
+                    regim_fiscal = cfg.get("regim_fiscal", "micro1")
+                    if regim_fiscal == "micro1":
+                        cota_imp = 0.01
+                    elif regim_fiscal == "micro3":
+                        cota_imp = 0.03
+                    else:
+                        cota_imp = 0.16
 
-        with col1:
-            chirie = st.number_input("Chirie lunară", min_value=0.0, value=float(config.get("chirie", 0)), step=100.0, format="%.0f")
-            salarii = st.number_input("Salarii totale brute + taxe", min_value=0.0, value=float(config.get("salarii", 0)), step=100.0, format="%.0f")
-        with col2:
-            utilitati = st.number_input("Utilități", min_value=0.0, value=float(config.get("utilitati", 0)), step=50.0, format="%.0f")
-            nr_clienti = st.number_input("Clienți / vânzări estimate/lună", min_value=1, value=int(config.get("nr_clienti", 100)), step=10)
+                    total_cost = food_cost_preparat + regie_per_preparat
+                    factor_net = (1 - cota_imp) * (1 - cota_div)
+                    # pret_fara_tva = total_cost / (factor_net - 0.20 * (1+cota_tva) / (1+cota_tva))
+                    # Simplificat:
+                    pret_net_necesar = total_cost / (factor_net * 0.8) if factor_net > 0 else total_cost * 2
+                    pret_rec = pret_net_necesar * (1 + cota_tva)
 
-        st.markdown("<hr>", unsafe_allow_html=True)
-        total_fixe = chirie + salarii + utilitati
-        regie = total_fixe / nr_clienti if nr_clienti else 0
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Total Cheltuieli Fixe", f"{total_fixe:,.0f} RON")
-        c2.metric("Nr. Clienți/Lună", f"{nr_clienti:,}")
-        c3.metric("Regie per Bon", f"{regie:,.2f} RON")
-
-        if st.button("Salvează Cheltuielile Fixe"):
-            if all([
-                actualizeaza_config(spreadsheet, "chirie", chirie),
-                actualizeaza_config(spreadsheet, "salarii", salarii),
-                actualizeaza_config(spreadsheet, "utilitati", utilitati),
-                actualizeaza_config(spreadsheet, "nr_clienti", nr_clienti),
-            ]):
-                st.success("✓ Cheltuieli fixe salvate.")
-                st.cache_resource.clear()
-
-# ──────────────────────────────────────────────
-# PAGINA: SCANARE FACTURI
-# ──────────────────────────────────────────────
-
-elif "📄" in pagina:
-    st.markdown("## Scanare Facturi")
-    st.markdown('<div style="color:#9999b0;margin-top:-8px;margin-bottom:28px;font-size:14px;">Extragere automată prin AI (Gemini 1.5 Flash)</div>', unsafe_allow_html=True)
-
-    if not conexiune_ok:
-        st.warning("Conexiunea la Google Sheets nu este disponibilă.")
-    else:
-        st.markdown('<div class="section-header">Încarcă Fotografie Factură</div>', unsafe_allow_html=True)
-        fisier = st.file_uploader("Factură (JPG, PNG, WEBP)", type=["jpg","jpeg","png","webp","pdf"], label_visibility="collapsed")
-
-        if fisier:
-            if fisier.type.startswith("image"):
-                st.image(fisier, caption="Previzualizare", width=380)
-
-            if st.button("🔍 Analizează cu AI"):
-                with st.spinner("Gemini procesează factura..."):
-                    bytes_f = fisier.read()
-                    mime = fisier.type or "image/jpeg"
-                    produse = extrage_factura_cu_ai(bytes_f, mime)
-                if produse:
-                    st.session_state["produse_factura"] = produse
-                    st.success(f"✓ {len(produse)} produs(e) identificate.")
+                    st.markdown(f"""
+                    <div style="background:#fce8e8;border:1px solid #f5c6c6;border-radius:14px;
+                        padding:1.5rem;margin-top:1rem;">
+                        <div style="font-size:1rem;font-weight:600;color:#c62828;margin-bottom:0.5rem;">
+                            ⚠ Marjă insuficientă ({marja:.1f}%)
+                        </div>
+                        <div style="font-size:0.88rem;color:#7f1f1f;line-height:1.6;">
+                            Ajustează prețul sau reduce ingredientele costisitoare.<br>
+                            <strong>Preț recomandat pentru marjă 20%:</strong>
+                            <span style="font-size:1.1rem;font-weight:700;"> {pret_rec:.2f} RON</span>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                elif marja <= 20:
+                    st.markdown(f"""
+                    <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:14px;
+                        padding:1.5rem;margin-top:1rem;">
+                        <div style="font-size:1rem;font-weight:600;color:#f57f17;margin-bottom:0.5rem;">
+                            ℹ Marjă acceptabilă ({marja:.1f}%)
+                        </div>
+                        <div style="font-size:0.88rem;color:#795700;line-height:1.6;">
+                            Există loc de optimizare a costurilor. Încearcă să reduci gramajele
+                            sau să cauți furnizori mai competitivi pentru ingredientele cheie.
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
                 else:
-                    st.warning("Nu s-au putut extrage produse. Verifică claritatea imaginii.")
+                    st.markdown(f"""
+                    <div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:14px;
+                        padding:1.5rem;margin-top:1rem;">
+                        <div style="font-size:1rem;font-weight:600;color:#2e7d32;margin-bottom:0.5rem;">
+                            ✓ Marjă excelentă ({marja:.1f}%)
+                        </div>
+                        <div style="font-size:0.88rem;color:#1b5e20;line-height:1.6;">
+                            Preparatul este viabil comercial. Poți să-l introduci cu încredere în meniu.
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-        if st.session_state.get("produse_factura"):
-            st.markdown('<div class="section-header">Produse Extrase — Validare</div>', unsafe_allow_html=True)
-            produse = st.session_state["produse_factura"]
-            are_erori = False
-            produse_ok = []
-
-            for i, p in enumerate(produse):
-                c1, c2, c3, c4 = st.columns([3, 1.5, 2, 2])
-                with c1:
-                    nume = st.text_input("Produs", value=p.get("produs",""), key=f"p_{i}",
-                        label_visibility="visible" if i==0 else "collapsed")
-                with c2:
-                    cant = st.number_input("Cantitate", value=float(p.get("cantitate",0)),
-                        min_value=0.0, step=0.1, key=f"c_{i}",
-                        label_visibility="visible" if i==0 else "collapsed")
-                with c3:
-                    um_raw = p.get("unitate", "NECUNOSCUT")
-                    um_valid = um_raw.lower().strip() in UNITATI_CUNOSCUTE
-                    if not um_valid:
-                        are_erori = True
-                        st.markdown(f'<div class="alert-validation">⚠️ Unitate necunoscută: <b>"{um_raw}"</b></div>', unsafe_allow_html=True)
-                        um = st.text_input("Unitate", value="", key=f"u_{i}", placeholder="kg, g, l, buc")
-                    else:
-                        um = st.text_input("Unitate", value=um_raw, key=f"u_{i}",
-                            label_visibility="visible" if i==0 else "collapsed")
-                with c4:
-                    pret = st.number_input("Preț Unitar (RON)", value=float(p.get("pret_unitar",0)),
-                        min_value=0.0, step=0.01, format="%.2f", key=f"pr_{i}",
-                        label_visibility="visible" if i==0 else "collapsed")
-
-                um_final = st.session_state.get(f"u_{i}", um)
-                if um_final and um_final.lower().strip() not in UNITATI_CUNOSCUTE and not um_valid:
-                    are_erori = True
-
-                produse_ok.append({"produs": st.session_state.get(f"p_{i}", nume),
-                                   "cantitate": cant, "unitate": um_final or um, "pret_unitar": pret})
-
-            st.markdown("<hr>", unsafe_allow_html=True)
-            if are_erori:
-                st.markdown('<div class="alert-validation">Salvarea este blocată — completează toate unitățile de măsură.<br>Acceptate: kg, g, l, ml, buc, bucata, bucăți, litri, grame, kilograme</div>', unsafe_allow_html=True)
-                st.button("Salvează în Stoc", disabled=True)
-            else:
-                if st.button("✓ Salvează în Stoc"):
-                    with st.spinner("Salvând..."):
-                        ok = all(scrie_rand(spreadsheet, "Stoc",
-                            [p["produs"], p["cantitate"], p["unitate"], p["pret_unitar"],
-                             datetime.now().strftime("%Y-%m-%d")]) for p in produse_ok)
-                    if ok:
-                        st.success(f"✓ {len(produse_ok)} produs(e) salvate în Stoc.")
-                        del st.session_state["produse_factura"]
-
-# ──────────────────────────────────────────────
-# PAGINA: SIMULATOR SANDBOX
-# ──────────────────────────────────────────────
-
-elif "🧪" in pagina:
-    st.markdown("## Simulator Sandbox")
-    st.markdown('<div style="color:#9999b0;margin-top:-8px;margin-bottom:28px;font-size:14px;">Calculează profitul real pentru un preparat nou înainte să-l lansezi</div>', unsafe_allow_html=True)
-
-    if not conexiune_ok:
-        st.warning("Conexiunea la Google Sheets nu este disponibilă.")
-    else:
-        config = citeste_config(spreadsheet)
-        df_stoc = citeste_foaie(spreadsheet, "Stoc")
-        if not df_stoc.empty:
-            df_stoc.columns = [c.lower() for c in df_stoc.columns]
-
-        col_form, col_rez = st.columns(2)
-
-        with col_form:
-            st.markdown('<div class="section-header">Date Preparat Nou</div>', unsafe_allow_html=True)
-            nume_prep = st.text_input("Nume preparat", placeholder="ex: Burger Angus 200g")
-            pret_v = st.number_input("Preț vânzare (RON, cu TVA)", min_value=0.0, value=0.0, step=0.5, format="%.2f")
-
-            st.markdown('<div class="section-header">Ingrediente din Stoc</div>', unsafe_allow_html=True)
-            nr_ing = st.number_input("Număr ingrediente", min_value=1, max_value=20, value=3, step=1)
-
-            lista_stoc = []
-            if not df_stoc.empty and "produs" in df_stoc.columns:
-                lista_stoc = df_stoc["produs"].dropna().unique().tolist()
-
-            ingrediente = []
-            for j in range(int(nr_ing)):
-                cj1, cj2 = st.columns([2, 1])
-                with cj1:
-                    if lista_stoc:
-                        prod = st.selectbox(f"Ingredient {j+1}", lista_stoc, key=f"ip_{j}")
-                    else:
-                        prod = st.text_input(f"Ingredient {j+1}", key=f"ip_{j}", placeholder="Nume ingredient")
-                with cj2:
-                    gram = st.number_input("Gramaj (g)", min_value=0.0, value=100.0, step=5.0, format="%.0f", key=f"ig_{j}")
-                if prod:
-                    ingrediente.append({"produs": prod, "gramaj": gram})
-
-            calc_btn = st.button("Calculează Profitabilitatea", use_container_width=True)
-
-        with col_rez:
-            st.markdown('<div class="section-header">Rezultat</div>', unsafe_allow_html=True)
-
-            if calc_btn and pret_v > 0 and ingrediente:
-                rez = calculeaza_simulator(pret_v, ingrediente, df_stoc, config)
-                culoare = "#1a3a5c" if rez["profit_net"] >= 0 else "#c62828"
-                cota_tva_label = config.get("cota_tva", "9%")
-
+                st.markdown("<div style='height:1.5rem;'></div>", unsafe_allow_html=True)
                 st.markdown(f"""
-                <div class="result-box">
-                    <div class="result-label">Rămâi în mână cu</div>
-                    <div class="result-main" style="color:{culoare}">
-                        {rez['profit_net']:,.2f} <span style="font-size:24px;font-weight:400">lei</span>
+                <div style="background:#ffffff;border:1px solid #e8e8f0;border-radius:14px;
+                    padding:1.2rem 1.5rem;font-size:0.85rem;">
+                    <div style="color:#8a8a99;font-size:0.72rem;letter-spacing:0.06em;
+                        text-transform:uppercase;margin-bottom:0.8rem;">Detalii calcul</div>
+                    <div style="display:flex;justify-content:space-between;padding:3px 0;color:#4a4a5a;">
+                        <span>Food cost ingrediente</span>
+                        <span style="font-weight:500;">{food_cost_preparat:.2f} RON</span>
                     </div>
-                    <div style="font-size:18px;color:{culoare};margin-top:12px;">
-                        {rez['marja_neta']:+.1f}% marjă netă reală
+                    <div style="display:flex;justify-content:space-between;padding:3px 0;color:#4a4a5a;">
+                        <span>Regie fixă / client</span>
+                        <span style="font-weight:500;">{regie_per_preparat:.2f} RON</span>
                     </div>
-                    <div class="result-breakdown">
-Preț vânzare (cu TVA)       {rez['pret_vanzare']:>9.2f} RON
-− TVA ({cota_tva_label})                {rez['tva']:>9.2f} RON
-= Preț fără TVA             {rez['pret_fara_tva']:>9.2f} RON
-− Food Cost ingrediente     {rez['food_cost']:>9.2f} RON
-− Regie fixă/produs         {rez['regie_per_produs']:>9.2f} RON
-────────────────────────────────────────
-= Profit înainte taxe       {rez['profit_dupa_regie']:>9.2f} RON
-− Impozit firmă             {rez['impozit_firma']:>9.2f} RON
-− Impozit dividend          {rez['impozit_dividend']:>9.2f} RON
-────────────────────────────────────────
-✓ PROFIT NET REAL           {rez['profit_net']:>9.2f} RON
+                    <div style="display:flex;justify-content:space-between;padding:3px 0;color:#4a4a5a;">
+                        <span>Preț vânzare (cu TVA)</span>
+                        <span style="font-weight:500;">{pret_vanzare:.2f} RON</span>
                     </div>
-                </div>""", unsafe_allow_html=True)
-
-                if rez["marja_neta"] < 10:
-                    st.warning(f"⚠️ Marjă sub 10% ({rez['marja_neta']:.1f}%). Ajustează prețul sau ingredientele.")
-                elif rez["marja_neta"] < 20:
-                    st.info(f"💡 Marjă acceptabilă ({rez['marja_neta']:.1f}%). Există loc de optimizare.")
-                else:
-                    st.success(f"✓ Marjă excelentă ({rez['marja_neta']:.1f}%). Preparat viabil.")
-
-            elif calc_btn:
-                st.warning("Completează prețul și cel puțin un ingredient.")
-            else:
-                st.markdown("""
-                <div style="text-align:center;padding:60px 20px;color:#c0c0d0;">
-                    <div style="font-size:48px;margin-bottom:16px;opacity:0.3;">◈</div>
-                    <div style="font-size:14px;">Completează formularul și apasă<br><b>Calculează Profitabilitatea</b></div>
-                </div>""", unsafe_allow_html=True)
-
-# ──────────────────────────────────────────────
-# FOOTER
-# ──────────────────────────────────────────────
-
-st.markdown("""
-<div style="text-align:center;padding:32px 0 16px 0;color:#c0c0cc;font-size:11px;letter-spacing:0.06em;">
-    LANA · ACQ Advisory · Motor de Profitabilitate pentru Restaurante
-</div>
-""", unsafe_allow_html=True)
+                </div>
+                """, unsafe_allow_html=True)
