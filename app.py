@@ -1,9 +1,9 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 #  LANA · Advisory Platform  —  app.py
-#  Design: Apple Dark Mode (macOS-style) · Inter font
-#  Features: OCR Raport Z, Stoc Critic, Simulator preț manual, Tabs Vânzări
+#  Design: Apple Dark Mode (macOS) · Inter font
 #  Auth: hardcoded (serban / lana)
 #  Connections: st.secrets → gcp_service_account, spreadsheet_id, GEMINI_API_KEY
+#  v2: Scanare Raport Z cu OCR + fuzzy matching + dark mode + simulator upgrade
 # ═══════════════════════════════════════════════════════════════════════════════
 
 import streamlit as st
@@ -39,114 +39,115 @@ st.set_page_config(
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
-# GLOBAL CSS — Apple Dark Mode (macOS), animații subtile, Inter
+# GLOBAL CSS — Apple Dark Mode (macOS Sequoia), Inter, subtle animations
 # ─────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-/* ── Base dark ── */
+/* ── Reset & dark base ── */
 html, body, [class*="css"], [class*="st-"] {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
 }
 #MainMenu, header, footer,
 [data-testid="stToolbar"],
 [data-testid="collapsedControl"],
-[data-testid="stSidebarNav"] { display: none !important; }
+[data-testid="stSidebarNav"]          { display: none !important; }
 
-.stApp { background: #161617 !important; }
-[data-testid="stSidebar"] { display: none !important; }
-[data-testid="stAppViewContainer"] { background: #161617 !important; }
-[data-testid="stVerticalBlock"] { background: transparent !important; }
+.stApp                                { background: #000000 !important; }
+[data-testid="stSidebar"]             { display: none !important; }
 
-/* ── Typography ── */
+/* ── Scrollbar dark ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #1c1c1e; }
+::-webkit-scrollbar-thumb { background: #3a3a3c; border-radius: 3px; }
+
+/* ── Animations ── */
+@keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes shimmer {
+    0%   { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+}
+.animate-in {
+    animation: fadeUp 0.35s cubic-bezier(0.16,1,0.3,1) both;
+}
+.animate-in-delay-1 { animation-delay: 0.05s; }
+.animate-in-delay-2 { animation-delay: 0.10s; }
+.animate-in-delay-3 { animation-delay: 0.15s; }
+
+/* ── Typography helpers ── */
 .lana-eyebrow {
     font-size: 0.68rem; font-weight: 600; letter-spacing: 0.1em;
-    text-transform: uppercase; color: #6e6e73; margin-bottom: 0.4rem;
+    text-transform: uppercase; color: #636366; margin-bottom: 0.4rem;
 }
 .lana-title {
     font-size: 2rem; font-weight: 700; letter-spacing: -0.03em;
     color: #f5f5f7; line-height: 1.1; margin-bottom: 0.35rem;
 }
-.lana-subtitle { font-size: 0.9rem; color: #6e6e73; margin-bottom: 1.8rem; }
+.lana-subtitle { font-size: 0.9rem; color: #636366; margin-bottom: 1.8rem; }
 
-/* ── Cards dark ── */
+/* ── Cards ── */
 .lana-card {
     background: #1c1c1e;
     border: 1px solid #2c2c2e;
     border-radius: 16px;
     padding: 1.5rem 1.8rem;
-    box-shadow: 0 4px 20px rgba(0,0,0,.4);
+    box-shadow: 0 2px 12px rgba(0,0,0,.4);
     margin-bottom: 1rem;
-    animation: fadeIn .3s ease;
+    transition: border-color 0.2s ease;
 }
+.lana-card:hover { border-color: #3a3a3c; }
 .lana-card-sm {
     background: #1c1c1e;
     border: 1px solid #2c2c2e;
     border-radius: 12px;
     padding: 1.25rem 1.5rem;
-    box-shadow: 0 2px 10px rgba(0,0,0,.3);
-    animation: fadeIn .3s ease;
+    box-shadow: 0 1px 6px rgba(0,0,0,.3);
 }
 
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(6px); }
-    to   { opacity: 1; transform: translateY(0); }
-}
-
-/* ── Metric cards dark ── */
+/* ── Metric cards ── */
 .metric-card {
     background: #1c1c1e;
     border: 1px solid #2c2c2e;
     border-radius: 16px;
     padding: 1.4rem 1.6rem;
-    box-shadow: 0 4px 20px rgba(0,0,0,.35);
+    box-shadow: 0 2px 10px rgba(0,0,0,.35);
     height: 100%;
-    transition: transform .2s ease, box-shadow .2s ease;
-    animation: fadeIn .35s ease;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 .metric-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 30px rgba(0,0,0,.5);
+    box-shadow: 0 6px 20px rgba(0,0,0,.5);
 }
 .metric-label {
     font-size: 0.68rem; font-weight: 600; letter-spacing: 0.1em;
-    text-transform: uppercase; color: #6e6e73; margin-bottom: 0.6rem;
+    text-transform: uppercase; color: #636366; margin-bottom: 0.6rem;
 }
 .metric-value {
     font-size: 1.85rem; font-weight: 700; color: #f5f5f7;
     letter-spacing: -0.03em; line-height: 1.1;
 }
-.metric-sub { font-size: 0.78rem; color: #6e6e73; margin-top: 0.4rem; }
+.metric-sub { font-size: 0.78rem; color: #636366; margin-top: 0.4rem; }
 
-/* ── Badges dark ── */
+/* ── Badge ── */
 .badge {
     display: inline-block; padding: 3px 10px; border-radius: 20px;
     font-size: 0.72rem; font-weight: 600; letter-spacing: 0.02em;
     margin-top: 0.6rem;
 }
-.badge-green  { background: rgba(52,199,89,.18);  color: #30d158; }
-.badge-red    { background: rgba(255,69,58,.18);   color: #ff453a; }
-.badge-blue   { background: rgba(10,132,255,.18);  color: #0a84ff; }
-.badge-amber  { background: rgba(255,159,10,.18);  color: #ffd60a; }
-.badge-critical {
-    background: rgba(255,69,58,.25);
-    color: #ff453a;
-    border: 1px solid rgba(255,69,58,.4);
-    font-size: 0.82rem;
-    padding: 5px 14px;
-    animation: pulse 2s infinite;
-}
-@keyframes pulse {
-    0%,100% { box-shadow: 0 0 0 0 rgba(255,69,58,.4); }
-    50%      { box-shadow: 0 0 0 6px rgba(255,69,58,.0); }
-}
+.badge-green  { background: rgba(48,209,88,.15);  color: #30d158; }
+.badge-red    { background: rgba(255,69,58,.15);   color: #ff453a; }
+.badge-blue   { background: rgba(10,132,255,.15);  color: #0a84ff; }
+.badge-amber  { background: rgba(255,159,10,.15);  color: #ff9f0a; }
 
-/* ── Header dark ── */
+/* ── Header bar ── */
 .lana-header {
     display: flex; align-items: center; justify-content: space-between;
     padding: 1rem 2rem;
-    background: rgba(22,22,23,0.88);
+    background: rgba(28,28,30,0.85);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border-bottom: 1px solid #2c2c2e;
@@ -157,11 +158,11 @@ html, body, [class*="css"], [class*="st-"] {
     font-size: 1.15rem; font-weight: 700; color: #f5f5f7; letter-spacing: -0.02em;
 }
 .lana-header-meta {
-    font-size: 0.8rem; color: #6e6e73; text-align: right; line-height: 1.5;
+    font-size: 0.8rem; color: #636366; text-align: right; line-height: 1.5;
 }
-.lana-header-meta strong { color: #f5f5f7; font-weight: 600; }
+.lana-header-meta strong { color: #ebebf5; font-weight: 600; }
 
-/* ── Tabs dark ── */
+/* ── Tabs ── */
 [data-testid="stTabs"] > div:first-child {
     background: transparent !important;
     border-bottom: 1px solid #2c2c2e !important;
@@ -173,7 +174,7 @@ html, body, [class*="css"], [class*="st-"] {
     font-family: 'Inter', sans-serif !important;
     font-size: 0.88rem !important;
     font-weight: 500 !important;
-    color: #6e6e73 !important;
+    color: #636366 !important;
     padding: 0.6rem 1.1rem !important;
     border: none !important;
     border-bottom: 2px solid transparent !important;
@@ -214,7 +215,7 @@ html, body, [class*="css"], [class*="st-"] {
 .stSelectbox label, .stDateInput label,
 .stFileUploader label, .stTextArea label,
 .stSlider label {
-    color: #aeaeb2 !important; font-size: 0.78rem !important;
+    color: #8e8e93 !important; font-size: 0.78rem !important;
     font-weight: 500 !important; letter-spacing: 0.03em !important;
 }
 
@@ -226,9 +227,8 @@ html, body, [class*="css"], [class*="st-"] {
     color: #f5f5f7 !important;
 }
 .stSelectbox > div > div > div { color: #f5f5f7 !important; }
-[data-baseweb="select"] [data-testid="stMarkdownContainer"] p { color: #f5f5f7 !important; }
 
-/* Password */
+/* Password field */
 .stTextInput [type="password"] { letter-spacing: 0.15em !important; }
 
 /* File uploader dark */
@@ -237,8 +237,8 @@ html, body, [class*="css"], [class*="st-"] {
     border-radius: 14px !important;
     background: #1c1c1e !important;
     padding: 1.2rem !important;
-    color: #6e6e73 !important;
-    transition: border-color .2s !important;
+    color: #8e8e93 !important;
+    transition: border-color 0.2s ease !important;
 }
 [data-testid="stFileUploader"]:hover {
     border-color: #0a84ff !important;
@@ -254,7 +254,7 @@ html, body, [class*="css"], [class*="st-"] {
     font-size: 0.88rem !important;
     font-weight: 500 !important;
     padding: 0.55rem 1.3rem !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,.3) !important;
+    box-shadow: 0 1px 4px rgba(0,0,0,.3) !important;
     transition: all .15s ease !important;
 }
 .stButton > button:hover {
@@ -267,69 +267,73 @@ html, body, [class*="css"], [class*="st-"] {
     background: #0a84ff !important;
     color: #ffffff !important;
     border-color: #0a84ff !important;
-    box-shadow: 0 2px 10px rgba(10,132,255,.4) !important;
+    box-shadow: 0 2px 8px rgba(10,132,255,.4) !important;
 }
 .stButton > button[kind="primary"]:hover {
-    background: #409cff !important;
-    border-color: #409cff !important;
-    box-shadow: 0 4px 16px rgba(10,132,255,.5) !important;
+    background: #0077ed !important;
+    border-color: #0077ed !important;
+    box-shadow: 0 4px 14px rgba(10,132,255,.5) !important;
     transform: translateY(-1px) !important;
 }
 
 /* Slider dark */
-.stSlider > div > div > div > div { background: #0a84ff !important; }
-.stSlider > div > div > div { background: #3a3a3c !important; }
+.stSlider > div > div > div > div {
+    background: #0a84ff !important;
+}
+.stSlider [data-baseweb="slider"] [data-testid="stSliderTrack"] {
+    background: #3a3a3c !important;
+}
 
 /* Alerts dark */
-.stSuccess { background: rgba(48,209,88,.12) !important; border: 1px solid rgba(48,209,88,.25) !important;
-    border-radius: 10px !important; color: #30d158 !important; }
-.stWarning { background: rgba(255,159,10,.12) !important; border: 1px solid rgba(255,159,10,.25) !important;
-    border-radius: 10px !important; color: #ffd60a !important; }
-.stError   { background: rgba(255,69,58,.12) !important; border: 1px solid rgba(255,69,58,.25) !important;
-    border-radius: 10px !important; color: #ff453a !important; }
-.stInfo    { background: rgba(10,132,255,.12) !important; border: 1px solid rgba(10,132,255,.25) !important;
-    border-radius: 10px !important; color: #0a84ff !important; }
+.stSuccess { background: rgba(48,209,88,.12) !important; color: #30d158 !important; border-color: rgba(48,209,88,.3) !important; border-radius: 10px !important; }
+.stWarning { background: rgba(255,159,10,.12) !important; color: #ff9f0a !important; border-color: rgba(255,159,10,.3) !important; border-radius: 10px !important; }
+.stError   { background: rgba(255,69,58,.12) !important;  color: #ff453a !important; border-color: rgba(255,69,58,.3) !important;  border-radius: 10px !important; }
+.stInfo    { background: rgba(10,132,255,.12) !important; color: #0a84ff !important; border-color: rgba(10,132,255,.3) !important;  border-radius: 10px !important; }
 
 /* Dataframe dark */
-[data-testid="stDataFrame"] { border-radius: 12px !important; overflow: hidden !important; }
+[data-testid="stDataFrame"] {
+    border-radius: 12px !important;
+    overflow: hidden !important;
+    border: 1px solid #2c2c2e !important;
+}
+[data-testid="stDataFrame"] table {
+    background: #1c1c1e !important;
+    color: #f5f5f7 !important;
+}
 
 /* Spinner */
 .stSpinner > div { border-top-color: #0a84ff !important; }
 
-/* Scrollbar dark */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #161617; }
-::-webkit-scrollbar-thumb { background: #3a3a3c; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #48484a; }
-
-/* Login dark */
+/* Login page dark */
 .login-wrap {
     max-width: 420px; margin: 5vh auto 0; padding: 2.5rem;
     background: #1c1c1e; border: 1px solid #2c2c2e;
-    border-radius: 20px; box-shadow: 0 8px 40px rgba(0,0,0,.6);
+    border-radius: 20px; box-shadow: 0 8px 32px rgba(0,0,0,.6);
 }
 .login-logo {
     font-size: 1.5rem; font-weight: 700; letter-spacing: -0.03em;
     color: #f5f5f7; text-align: center; margin-bottom: 0.25rem;
 }
-.login-tagline { font-size: 0.82rem; color: #6e6e73; text-align: center; margin-bottom: 2rem; }
+.login-tagline {
+    font-size: 0.82rem; color: #636366; text-align: center; margin-bottom: 2rem;
+}
 
-/* Cascadă row dark */
+/* Cascadă row */
 .casc-row {
     display: flex; justify-content: space-between; align-items: center;
     padding: 0.55rem 0; border-bottom: 1px solid #2c2c2e;
 }
-.casc-label { font-size: 0.88rem; color: #aeaeb2; }
+.casc-label { font-size: 0.88rem; color: #8e8e93; }
 .casc-val   { font-size: 0.88rem; font-weight: 500; font-variant-numeric: tabular-nums; }
 
 /* Bon fiscal dark */
 .bon-wrap {
     background: #1c1c1e; border: 1px solid #2c2c2e; border-radius: 16px;
-    padding: 1.8rem; max-width: 400px; box-shadow: 0 4px 20px rgba(0,0,0,.4);
+    padding: 1.8rem; max-width: 400px; box-shadow: 0 4px 16px rgba(0,0,0,.4);
 }
 .bon-title {
     font-size: 0.65rem; font-weight: 700; letter-spacing: 0.18em;
-    text-transform: uppercase; color: #6e6e73; text-align: center;
+    text-transform: uppercase; color: #636366; text-align: center;
     margin-bottom: 0.3rem;
 }
 .bon-date  { font-size: 0.72rem; color: #48484a; text-align: center; margin-bottom: 1.2rem; }
@@ -344,44 +348,45 @@ html, body, [class*="css"], [class*="st-"] {
 .bon-net-label { font-size: 0.95rem; font-weight: 700; color: #f5f5f7; }
 .bon-net-val   { font-size: 1.5rem; font-weight: 700; }
 
-/* Sub-tab pills */
-.subtab-container {
+/* ── Subtab selector (Scanare / Manual) ── */
+.sub-tab-bar {
     display: flex; gap: 0.5rem; margin-bottom: 1.5rem;
 }
-.subtab-pill {
-    padding: 0.45rem 1.1rem; border-radius: 20px; font-size: 0.84rem; font-weight: 500;
-    cursor: pointer; border: 1px solid #3a3a3c; background: #2c2c2e; color: #aeaeb2;
-    transition: all .15s ease;
+.sub-tab {
+    padding: 0.45rem 1.1rem; border-radius: 8px; font-size: 0.85rem;
+    font-weight: 500; cursor: pointer; border: 1px solid #3a3a3c;
+    background: #2c2c2e; color: #8e8e93;
+    transition: all 0.15s ease;
+    display: inline-block;
 }
-.subtab-pill.active {
-    background: #0a84ff; color: #ffffff; border-color: #0a84ff;
-    box-shadow: 0 2px 10px rgba(10,132,255,.35);
-}
-
-/* Stoc critic banner */
-.stoc-critic-banner {
-    background: rgba(255,69,58,.1);
-    border: 1px solid rgba(255,69,58,.3);
-    border-radius: 12px;
-    padding: 0.9rem 1.2rem;
-    margin-bottom: 1rem;
-    animation: fadeIn .4s ease;
-}
-.stoc-critic-title {
-    font-size: 0.78rem; font-weight: 700; letter-spacing: 0.05em;
-    text-transform: uppercase; color: #ff453a; margin-bottom: 0.4rem;
+.sub-tab.active {
+    background: #0a84ff; color: #fff; border-color: #0a84ff;
+    box-shadow: 0 2px 8px rgba(10,132,255,.35);
 }
 
-/* Confirm table rows */
-.confirm-row {
+/* ── OCR scan card ── */
+.scan-zone {
+    border: 1.5px dashed #3a3a3c;
+    border-radius: 16px;
+    background: #1c1c1e;
+    padding: 2rem;
+    text-align: center;
+    transition: border-color 0.2s ease;
+}
+.scan-zone:hover { border-color: #0a84ff; }
+
+/* ── Match row (confirmare) ── */
+.match-row {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 0.6rem 0; border-bottom: 1px solid #2c2c2e;
+    padding: 0.6rem 0; border-bottom: 1px solid #2c2c2e; gap: 0.5rem;
 }
+.match-name { font-size: 0.88rem; color: #f5f5f7; font-weight: 500; flex: 2; }
+.match-ai   { font-size: 0.78rem; color: #636366; flex: 1.5; }
+.match-badge-ok  { background: rgba(48,209,88,.15); color: #30d158; padding: 2px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 600; }
+.match-badge-err { background: rgba(255,159,10,.15); color: #ff9f0a; padding: 2px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 600; }
 
-/* Match badge */
-.match-exact  { color: #30d158; font-size: 0.72rem; font-weight: 600; }
-.match-fuzzy  { color: #ffd60a; font-size: 0.72rem; font-weight: 600; }
-.match-none   { color: #ff453a; font-size: 0.72rem; font-weight: 600; }
+/* Streamlit number input no spin */
+.stNumberInput button { background: #2c2c2e !important; border-color: #3a3a3c !important; color: #f5f5f7 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -394,7 +399,7 @@ PLAN_ACTIV   = "Lana Advisory"
 
 def pagina_login():
     st.markdown("""
-    <div class="login-wrap">
+    <div class="login-wrap animate-in">
         <div class="login-logo">◈ Lana</div>
         <div class="login-tagline">Platforma ta de management financiar</div>
     </div>
@@ -415,7 +420,6 @@ def pagina_login():
 
 if "autentificat" not in st.session_state:
     st.session_state["autentificat"] = False
-
 if not st.session_state["autentificat"]:
     pagina_login()
     st.stop()
@@ -427,7 +431,7 @@ st.markdown(f"""
 <div class="lana-header">
     <div style="display:flex;align-items:center;gap:0.75rem;">
         <span style="font-size:1.3rem;font-weight:700;color:#f5f5f7;letter-spacing:-0.02em;">◈ Lana</span>
-        <span style="font-size:0.75rem;font-weight:500;color:#6e6e73;padding:2px 10px;
+        <span style="font-size:0.75rem;font-weight:500;color:#636366;padding:2px 10px;
             border:1px solid #2c2c2e;border-radius:20px;">Advisory</span>
     </div>
     <div class="lana-header-meta">
@@ -438,50 +442,89 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# BACKEND — JWT / GOOGLE SHEETS  (folosește cryptography, disponibil pe Streamlit Cloud)
+# BACKEND — JWT / GOOGLE SHEETS (pure Python RSA, zero extra deps)
 # ─────────────────────────────────────────────────────────────────────────────
+def _parse_asn1_len(d, p):
+    b = d[p]; p += 1
+    if b < 0x80: return b, p
+    n = b & 0x7f
+    return int.from_bytes(d[p:p+n], 'big'), p + n
 
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding
+def _parse_asn1_int(d, p):
+    assert d[p] == 0x02, f"ASN.1 INT expected at {p}"
+    p += 1; ln, p = _parse_asn1_len(d, p)
+    return int.from_bytes(d[p:p+ln], 'big'), p + ln
 
-def _b64u(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).rstrip(b'=').decode()
+def _parse_pkcs1(data):
+    p = 0
+    assert data[p] == 0x30; p += 1
+    _, p = _parse_asn1_len(data, p)
+    _, p = _parse_asn1_int(data, p)
+    n, p = _parse_asn1_int(data, p)
+    _, p = _parse_asn1_int(data, p)
+    d, p = _parse_asn1_int(data, p)
+    return n, d
 
-@st.cache_resource(ttl=3500)
-def get_access_token() -> str:
-    sa  = st.secrets["gcp_service_account"]
+def _load_rsa_key(pem: str):
+    lines = pem.strip().splitlines()
+    b64   = ''.join(l for l in lines if not l.startswith('---'))
+    der   = base64.b64decode(b64)
+    if b'RSA PRIVATE' in pem.encode():
+        return _parse_pkcs1(der)
+    p = 0
+    assert der[p] == 0x30; p += 1
+    _, p = _parse_asn1_len(der, p)
+    _, p = _parse_asn1_int(der, p)
+    assert der[p] == 0x30; p += 1
+    aln, p = _parse_asn1_len(der, p); p += aln
+    assert der[p] == 0x04; p += 1
+    olen, p = _parse_asn1_len(der, p)
+    return _parse_pkcs1(der[p:p+olen])
+
+_SHA256_DER = bytes([
+    0x30,0x31,0x30,0x0d,0x06,0x09,0x60,0x86,0x48,0x01,0x65,0x03,0x04,
+    0x02,0x01,0x05,0x00,0x04,0x20
+])
+
+def _rsa_sign(message: bytes, n: int, d: int) -> bytes:
+    import hashlib
+    k  = (n.bit_length() + 7) // 8
+    t  = _SHA256_DER + hashlib.sha256(message).digest()
+    ps = b'\xff' * (k - len(t) - 3)
+    em = b'\x00\x01' + ps + b'\x00' + t
+    s  = pow(int.from_bytes(em, 'big'), d, n)
+    return s.to_bytes(k, 'big')
+
+def _make_jwt(sa: dict) -> str:
+    def b64u(x): return base64.urlsafe_b64encode(x).rstrip(b'=').decode()
     now = int(time.time())
-
-    hdr = _b64u(json.dumps({"alg": "RS256", "typ": "JWT"}).encode())
-    clm = _b64u(json.dumps({
-        "iss":   sa["client_email"],
+    hdr = b64u(json.dumps({"alg":"RS256","typ":"JWT"}, separators=(',',':')).encode())
+    pld = b64u(json.dumps({
+        "iss": sa["client_email"], "sub": sa["client_email"],
         "scope": "https://www.googleapis.com/auth/spreadsheets",
         "aud":   "https://oauth2.googleapis.com/token",
-        "iat":   now,
-        "exp":   now + 3600,
-    }).encode())
+        "iat": now, "exp": now + 3600,
+    }, separators=(',',':')).encode())
+    msg = f"{hdr}.{pld}".encode()
+    n, d = _load_rsa_key(sa["private_key"])
+    return f"{hdr}.{pld}.{b64u(_rsa_sign(msg, n, d))}"
 
-    private_key = serialization.load_pem_private_key(
-        sa["private_key"].encode(), password=None
-    )
-    sig_bytes = private_key.sign(
-        f"{hdr}.{clm}".encode(),
-        padding.PKCS1v15(),
-        hashes.SHA256(),
-    )
-    jwt = f"{hdr}.{clm}.{_b64u(sig_bytes)}"
-
+@st.cache_resource(ttl=3000)
+def get_access_token() -> str:
+    sa   = dict(st.secrets["gcp_service_account"])
+    jwt  = _make_jwt(sa)
     body = urllib.parse.urlencode({
         "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-        "assertion":  jwt,
+        "assertion": jwt,
     }).encode()
-    req = urllib.request.Request(
+    req  = urllib.request.Request(
         "https://oauth2.googleapis.com/token", data=body,
         headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST"
     )
     with urllib.request.urlopen(req) as r:
         return json.loads(r.read())["access_token"]
 
+# ── Helpers Sheets ──────────────────────────────────────────────────────────
 def sheets_get(rng: str) -> list:
     token = get_access_token()
     sid   = st.secrets["spreadsheet_id"]
@@ -526,6 +569,7 @@ def sheets_append(sheet: str, rows: list):
     try: urllib.request.urlopen(req)
     except Exception as e: st.error(f"Eroare append: {e}")
 
+# ── CRUD Sheets ──────────────────────────────────────────────────────────────
 def _sheet_to_df(sheet: str, cols: list) -> pd.DataFrame:
     rows = sheets_get(sheet)
     if len(rows) <= 1:
@@ -551,7 +595,7 @@ def salveaza_config(cfg: dict):
     st.cache_resource.clear()
 
 def citeste_stoc()    -> pd.DataFrame:
-    return _sheet_to_df("Stoc", ["Produs","Cantitate","Unitate","Pret_Unitar","Data"])
+    return _sheet_to_df("Stoc",    ["Produs","Cantitate","Unitate","Pret_Unitar","Data"])
 
 def salveaza_stoc(df: pd.DataFrame):
     rows = [["Produs","Cantitate","Unitate","Pret_Unitar","Data"]]
@@ -574,7 +618,6 @@ def citeste_retetar() -> pd.DataFrame:
 # ─────────────────────────────────────────────────────────────────────────────
 # LOGICĂ FINANCIARĂ
 # ─────────────────────────────────────────────────────────────────────────────
-
 def _f(x) -> float:
     try: return float(x)
     except: return 0.0
@@ -602,20 +645,17 @@ def cascada(vanzari_brute: float, food_cost: float, cfg: dict) -> dict:
     regim     = cfg.get("regim_fiscal", "micro1")
     div       = _f(cfg.get("cota_dividend", 0.08))
     ci        = {"micro1": 0.01, "micro3": 0.03, "profit16": 0.16}.get(str(regim), 0.01)
-
     tva_col   = vanzari_brute - vanzari_brute / (1 + tva)
     net_tva   = vanzari_brute / (1 + tva)
     fixe_zi   = (chirie + salarii + utilitati) / 30.0
     fc_eff    = food_cost if food_cost > 0 else net_tva * 0.30
     fc_sursa  = "calculat din rețetar" if food_cost > 0 else "estimat 30%"
-
     profit_brut = net_tva - fc_eff - fixe_zi
     imp_firma   = max(profit_brut * ci, 0.0)
     dupa_imp    = profit_brut - imp_firma
     imp_div     = max(dupa_imp * div, 0.0)
     net         = dupa_imp - imp_div
     marja       = (net / vanzari_brute * 100) if vanzari_brute > 0 else 0.0
-
     return {
         "vanzari_brute":           round(vanzari_brute, 2),
         "tva_colectat":            round(tva_col, 2),
@@ -632,48 +672,47 @@ def cascada(vanzari_brute: float, food_cost: float, cfg: dict) -> dict:
     }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FUZZY MATCHING — potrivire denumiri fără librării externe
+# FUZZY MATCHING — simplu, fără dependențe externe
 # ─────────────────────────────────────────────────────────────────────────────
+def _normalize(s: str) -> str:
+    """Normalizează string: lowercase, fără diacritice, fără cifre trailing."""
+    import unicodedata
+    s = s.lower().strip()
+    s = unicodedata.normalize('NFD', s)
+    s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
+    return s
 
 def _similarity(a: str, b: str) -> float:
-    """Similaritate simplă: caractere comune / max lungime (Dice coefficient)."""
-    a, b = a.lower().strip(), b.lower().strip()
+    """Scor similaritate 0-1 bazat pe token overlap + prefix match."""
+    a, b = _normalize(a), _normalize(b)
     if a == b: return 1.0
-    if not a or not b: return 0.0
-    # Bigrams
-    def bigrams(s):
-        return {s[i:i+2] for i in range(len(s)-1)}
-    ba, bb = bigrams(a), bigrams(b)
-    if not ba or not bb: return 0.0
-    return 2.0 * len(ba & bb) / (len(ba) + len(bb))
+    # Token overlap
+    ta = set(a.split())
+    tb = set(b.split())
+    if not ta or not tb: return 0.0
+    overlap = len(ta & tb) / max(len(ta), len(tb))
+    # Prefix: cel mai lung string e prefix al celuilalt?
+    shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
+    prefix_bonus = 0.3 if longer.startswith(shorter) else 0.0
+    return min(1.0, overlap + prefix_bonus)
 
-def fuzzy_match(name: str, candidates: list, threshold: float = 0.45):
+def fuzzy_match_preparat(ai_name: str, preparate_list: list, threshold: float = 0.35):
     """
-    Returnează (match, score, tip) unde tip e 'exact'/'fuzzy'/'none'.
+    Returnează (best_match_name, score) sau (None, 0) dacă sub threshold.
     """
-    name_l = name.lower().strip()
-    # Exact
-    for c in candidates:
-        if c.lower().strip() == name_l:
-            return c, 1.0, "exact"
-    # Contains
-    for c in candidates:
-        if name_l in c.lower().strip() or c.lower().strip() in name_l:
-            return c, 0.85, "fuzzy"
-    # Dice
     best, best_score = None, 0.0
-    for c in candidates:
-        s = _similarity(name_l, c.lower().strip())
-        if s > best_score:
-            best, best_score = c, s
-    if best and best_score >= threshold:
-        return best, best_score, "fuzzy"
-    return None, 0.0, "none"
+    for prep in preparate_list:
+        sc = _similarity(ai_name, prep)
+        if sc > best_score:
+            best_score = sc
+            best = prep
+    if best_score >= threshold:
+        return best, best_score
+    return None, 0.0
 
 # ─────────────────────────────────────────────────────────────────────────────
 # AI — GEMINI 1.5 Flash
 # ─────────────────────────────────────────────────────────────────────────────
-
 def extrage_factura_ai(img_bytes: bytes) -> dict | None:
     try:
         key    = st.secrets["GEMINI_API_KEY"]
@@ -704,16 +743,18 @@ def extrage_factura_ai(img_bytes: bytes) -> dict | None:
         st.error(f"Eroare AI: {e}"); return None
 
 def extrage_raport_z_ai(img_bytes: bytes) -> dict | None:
-    """Extrage produsele și cantitățile vândute dintr-un Raport Z / bon fiscal de zi."""
+    """Extrage produsele vândute din Raportul Z sau bonuri fiscale."""
     try:
         key    = st.secrets["GEMINI_API_KEY"]
         b64img = base64.b64encode(img_bytes).decode()
         prompt = (
-            "Ești un sistem de extragere date din Rapoarte Z și bonuri fiscale de zi din România. "
-            "Analizează imaginea și extrage TOATE produsele/preparatele cu cantitățile VÂNDUTE. "
-            "Nu confunda cantitățile cu prețurile. Cantitatea = număr de bucăți/porții vândute. "
-            "Returnează EXCLUSIV JSON valid, fără text, fără markdown, fără backticks. "
-            'Format exact: {"vanzari":[{"preparat":"Burger Angus","cantitate":20},{"preparat":"Bere","cantitate":30}]}'
+            "Ești un sistem OCR specializat pentru bonuri fiscale și Rapoarte Z din restaurante românești. "
+            "Analizează imaginea și extrage TOATE produsele/preparatele vândute cu cantitățile lor. "
+            "Ignoră taxe, subtotaluri, TVA, totaluri — extrage doar produsele individuale. "
+            "Returnează EXCLUSIV JSON valid, fără text extra, fără markdown, fără backticks. "
+            'Format exact: {"vanzari":[{"produs":"Nume preparat","cantitate":5}]} '
+            "Cantitățile trebuie să fie numere întregi sau zecimale. "
+            "Dacă același produs apare de mai multe ori, sumează cantitățile."
         )
         payload = json.dumps({"contents": [{"parts": [
             {"inline_data": {"mime_type": "image/jpeg", "data": b64img}},
@@ -732,73 +773,24 @@ def extrage_raport_z_ai(img_bytes: bytes) -> dict | None:
         st.error("AI-ul nu a returnat JSON valid. Încearcă cu o imagine mai clară.")
         return None
     except Exception as e:
-        st.error(f"Eroare AI Raport Z: {e}"); return None
-
-# ─────────────────────────────────────────────────────────────────────────────
-# STOC CRITIC — verificare și alertare
-# ─────────────────────────────────────────────────────────────────────────────
-
-PRAGURI_CRITICE = {
-    "kg": 1.0,
-    "g": 500.0,
-    "l": 1.0,
-    "ml": 500.0,
-    "buc": 5.0,
-    "bucata": 5.0,
-    "bucăți": 5.0,
-    "bucati": 5.0,
-    "litri": 1.0,
-    "grame": 500.0,
-    "kilograme": 1.0,
-}
-
-def verifica_stoc_critic(stoc_df: pd.DataFrame) -> list:
-    """Returnează lista de ingrediente cu stoc critic."""
-    critice = []
-    if stoc_df.empty: return critice
-    for _, row in stoc_df.iterrows():
-        prod  = str(row.get("Produs","")).strip()
-        cant  = _f(row.get("Cantitate", 0))
-        unit  = str(row.get("Unitate","")).lower().strip()
-        prag  = PRAGURI_CRITICE.get(unit, 1.0)
-        if cant <= prag and cant >= 0:
-            critice.append({
-                "produs": prod,
-                "cantitate": cant,
-                "unitate": unit,
-                "prag": prag,
-            })
-    return critice
-
-def afiseaza_alerte_stoc(critice: list):
-    if not critice: return
-    items_html = " · ".join(
-        f"<strong>{c['produs']}</strong> ({c['cantitate']:.2f} {c['unitate']})"
-        for c in critice
-    )
-    st.markdown(f"""
-    <div class="stoc-critic-banner">
-        <div class="stoc-critic-title">⚠️ Stoc critic detectat</div>
-        <div style="font-size:0.86rem;color:#ff453a;">{items_html}</div>
-    </div>""", unsafe_allow_html=True)
+        st.error(f"Eroare AI: {e}"); return None
 
 # ─────────────────────────────────────────────────────────────────────────────
 # COMPONENTE UI
 # ─────────────────────────────────────────────────────────────────────────────
-
 def card_metric(titlu: str, valoare: str, sub: str = "", badge: str = "", tip: str = "blue"):
     cls = {"green":"badge-green","red":"badge-red","blue":"badge-blue","amber":"badge-amber"}.get(tip,"badge-blue")
     badge_html = f'<div><span class="badge {cls}">{badge}</span></div>' if badge else ""
     sub_html   = f'<div class="metric-sub">{sub}</div>' if sub else ""
     st.markdown(f"""
-    <div class="metric-card">
+    <div class="metric-card animate-in">
         <div class="metric-label">{titlu}</div>
         <div class="metric-value">{valoare}</div>
         {sub_html}{badge_html}
     </div>""", unsafe_allow_html=True)
 
 def casc_row(label: str, valoare: float, plus: bool = False):
-    color = "#30d158" if plus else "#ff453a" if valoare > 0 else "#6e6e73"
+    color = "#30d158" if plus else "#ff453a" if valoare > 0 else "#48484a"
     sign  = "+" if plus else "−"
     st.markdown(f"""
     <div class="casc-row">
@@ -818,12 +810,12 @@ def bon_fiscal(d: dict, titlu: str = "BON FISCAL"):
         ("Impozit div.",   "#ff453a",  f"− {d['impozit_dividend']:,.2f} RON"),
     ]
     rows_html = "".join(
-        f'<div class="bon-line"><span style="color:#aeaeb2;">{l}</span>'
+        f'<div class="bon-line"><span style="color:#8e8e93;">{l}</span>'
         f'<span style="color:{c};">{v}</span></div>'
         for l, c, v in linii
     )
     st.markdown(f"""
-    <div class="bon-wrap">
+    <div class="bon-wrap animate-in">
         <div class="bon-title">{titlu}</div>
         <div class="bon-date">{datetime.now().strftime("%d.%m.%Y · %H:%M")}</div>
         <hr class="bon-sep">
@@ -838,10 +830,29 @@ def bon_fiscal(d: dict, titlu: str = "BON FISCAL"):
         </div>
     </div>""", unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# NAVIGARE
-# ─────────────────────────────────────────────────────────────────────────────
+def scade_stoc_din_vanzari(vanzari_input: list, retetar_df: pd.DataFrame):
+    """Scade ingredientele din stoc pe baza rețetarului. Returnează stoc_df actualizat."""
+    stoc_df = citeste_stoc()
+    if retetar_df.empty or stoc_df.empty:
+        return stoc_df
+    for v in vanzari_input:
+        prep_v = str(v["Preparat"]).lower().strip()
+        cant_v = _f(v["Cantitate_Vanduta"])
+        ings   = retetar_df[retetar_df["Preparat"].str.lower().str.strip() == prep_v]
+        for _, irow in ings.iterrows():
+            ing     = str(irow.get("Ingredient","")).lower().strip()
+            gramaj  = _f(irow.get("Gramaj",0)) / 1000.0
+            consum  = cant_v * gramaj
+            mask    = stoc_df["Produs"].str.lower().str.strip() == ing
+            if mask.any():
+                idx3 = stoc_df[mask].index[0]
+                cur  = _f(stoc_df.at[idx3,"Cantitate"])
+                stoc_df.at[idx3,"Cantitate"] = max(0, round(cur - consum, 4))
+    return stoc_df
 
+# ─────────────────────────────────────────────────────────────────────────────
+# NAVIGARE  —  st.tabs
+# ─────────────────────────────────────────────────────────────────────────────
 tab_dash, tab_facturi, tab_vanzari, tab_setari, tab_sim = st.tabs([
     "Dashboard",
     "Scanare Facturi",
@@ -863,11 +874,6 @@ with tab_dash:
     stoc_df    = citeste_stoc()
     vanzari_df = citeste_vanzari()
     retetar_df = citeste_retetar()
-
-    # ── Alerte stoc critic pe Dashboard ──────────────────────────────────────
-    critice_dash = verifica_stoc_critic(stoc_df)
-    if critice_dash:
-        afiseaza_alerte_stoc(critice_dash)
 
     azi = date.today().strftime("%Y-%m-%d")
     v_azi = (vanzari_df[vanzari_df["Data"].astype(str).str.startswith(azi)]
@@ -899,20 +905,11 @@ with tab_dash:
         total_chelt = c["cheltuieli_fixe_zilnice"] + c["tva_colectat"] + c["impozit_firma"] + c["impozit_dividend"]
         card_metric("Cheltuieli Totale", f"{total_chelt:,.2f} RON", sub="Taxe + fixe zilnice")
 
-    # Stoc critic badge suplimentar sub metrici
-    if critice_dash:
-        badges_html = " ".join(
-            f'<span class="badge badge-critical">⚠️ {c["produs"]}</span>'
-            for c in critice_dash
-        )
-        st.markdown(f"<div style='margin-top:0.5rem;'>{badges_html}</div>", unsafe_allow_html=True)
-
     st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
-
     col_left, col_right = st.columns([1.3, 1])
 
     with col_left:
-        st.markdown('<div class="lana-card">', unsafe_allow_html=True)
+        st.markdown('<div class="lana-card animate-in">', unsafe_allow_html=True)
         st.markdown('<div class="lana-eyebrow" style="margin-bottom:1rem;">Cascadă Financiară Zilnică</div>',
                     unsafe_allow_html=True)
         casc_row("Încasări brute (cu TVA)", c["vanzari_brute"], plus=True)
@@ -922,7 +919,7 @@ with tab_dash:
         pb_col = "#0a84ff"
         st.markdown(f"""
         <div class="casc-row">
-            <span class="casc-label" style="color:#f5f5f7;font-weight:500;">Profit brut operațional</span>
+            <span class="casc-label" style="color:#ebebf5;font-weight:500;">Profit brut operațional</span>
             <span class="casc-val" style="color:{pb_col};font-weight:600;">{c['profit_brut']:,.2f} RON</span>
         </div>""", unsafe_allow_html=True)
         casc_row("Impozit firmă",     c["impozit_firma"])
@@ -938,23 +935,23 @@ with tab_dash:
 
     with col_right:
         if not v_azi.empty:
-            st.markdown('<div class="lana-card">', unsafe_allow_html=True)
+            st.markdown('<div class="lana-card animate-in animate-in-delay-1">', unsafe_allow_html=True)
             st.markdown('<div class="lana-eyebrow" style="margin-bottom:1rem;">Vânzări de azi</div>',
                         unsafe_allow_html=True)
             for _, row in v_azi.iterrows():
                 st.markdown(f"""
                 <div style="display:flex;justify-content:space-between;padding:0.4rem 0;
                     border-bottom:1px solid #2c2c2e;font-size:0.88rem;">
-                    <span style="color:#aeaeb2;">{row.get('Preparat','')}</span>
+                    <span style="color:#8e8e93;">{row.get('Preparat','')}</span>
                     <span style="color:#0a84ff;font-weight:500;">{row.get('Cantitate_Vanduta',0)} buc</span>
                 </div>""", unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.markdown("""
-            <div class="lana-card" style="text-align:center;padding:2.5rem;">
+            <div class="lana-card animate-in" style="text-align:center;padding:2.5rem;">
                 <div style="font-size:2.2rem;margin-bottom:0.5rem;">📭</div>
-                <div style="font-size:0.9rem;color:#aeaeb2;font-weight:500;">Nicio vânzare înregistrată azi</div>
-                <div style="font-size:0.78rem;color:#6e6e73;margin-top:4px;">
+                <div style="font-size:0.9rem;color:#8e8e93;font-weight:500;">Nicio vânzare înregistrată azi</div>
+                <div style="font-size:0.78rem;color:#48484a;margin-top:4px;">
                     Mergi la Vânzări Zilnice pentru a înregistra
                 </div>
             </div>""", unsafe_allow_html=True)
@@ -982,9 +979,9 @@ with tab_facturi:
             st.markdown('<div class="lana-card-sm">', unsafe_allow_html=True)
             st.markdown('<div class="lana-eyebrow">Procesare AI</div>', unsafe_allow_html=True)
             st.markdown(
-                '<p style="font-size:0.88rem;color:#6e6e73;margin-bottom:1rem;">'
-                'Gemini 1.5 Flash va identifica produsele, cantitățile, unitățile și prețurile unitare.</p>',
-                unsafe_allow_html=True)
+                '<p style="font-size:0.88rem;color:#8e8e93;margin-bottom:1rem;">'
+                'Gemini 1.5 Flash va identifica produsele, cantitățile, '
+                'unitățile și prețurile unitare.</p>', unsafe_allow_html=True)
             if st.button("🔍 Extrage cu AI", type="primary"):
                 with st.spinner("Gemini analizează factura…"):
                     rez = extrage_factura_ai(img_bytes)
@@ -998,8 +995,7 @@ with tab_facturi:
     if st.session_state.produse_factura:
         stoc_df = citeste_stoc()
         st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
-        st.markdown('<div class="lana-eyebrow">Produse extrase · Verifică și editează</div>',
-                    unsafe_allow_html=True)
+        st.markdown('<div class="lana-eyebrow">Produse extrase · Verifică și editează</div>', unsafe_allow_html=True)
 
         produse_editate = []
         alerte          = []
@@ -1046,11 +1042,12 @@ with tab_facturi:
             diff_pct = (a['nou'] - a['vechi']) / a['vechi'] * 100
             badge_cls = "badge-red" if diff_pct > 5 else "badge-amber"
             st.markdown(f"""
-            <div class="lana-card-sm" style="border-color:rgba(255,69,58,.4);margin-bottom:0.5rem;">
+            <div class="lana-card-sm" style="border-color:#ff9f0a;margin-bottom:0.5rem;">
                 ⚠️ <strong style="color:#f5f5f7;">{a['produs']}</strong>
-                <span style="color:#aeaeb2;"> s-a scumpit de la
-                <strong>{a['vechi']:.2f}</strong> la
-                <strong>{a['nou']:.2f} RON</strong></span>
+                <span style="color:#8e8e93;"> s-a scumpit de la </span>
+                <strong style="color:#f5f5f7;">{a['vechi']:.2f}</strong>
+                <span style="color:#8e8e93;"> la </span>
+                <strong style="color:#f5f5f7;">{a['nou']:.2f} RON</strong>
                 &nbsp;<span class="badge {badge_cls}">+{diff_pct:.1f}%</span>
                 {'&nbsp;<span class="badge badge-red">Alertă Scumpire</span>' if diff_pct > 5 else ''}
             </div>""", unsafe_allow_html=True)
@@ -1080,203 +1077,182 @@ with tab_facturi:
             st.rerun()
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  TAB 3 — VÂNZĂRI ZILNICE  (cu sub-tabs: Scanare Raport Z / Introducere Manuală)
+#  TAB 3 — VÂNZĂRI ZILNICE  (cu sub-tabs: Scanare Raport Z | Introducere Manuală)
 # ═════════════════════════════════════════════════════════════════════════════
 with tab_vanzari:
     st.markdown('<p class="lana-eyebrow">Închidere de zi</p>', unsafe_allow_html=True)
     st.markdown('<h1 class="lana-title">Vânzări Zilnice</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="lana-subtitle">Alege metoda de înregistrare a vânzărilor din ziua curentă.</p>',
+    st.markdown('<p class="lana-subtitle">Alege modul de lucru pentru închiderea de azi.</p>',
                 unsafe_allow_html=True)
-
-    # ── Sub-tab selector ──────────────────────────────────────────────────────
-    if "vanzari_subtab" not in st.session_state:
-        st.session_state.vanzari_subtab = "manual"
-
-    col_tb1, col_tb2, _ = st.columns([1, 1, 3])
-    with col_tb1:
-        if st.button("📷 Scanare Raport Z",
-                     type="primary" if st.session_state.vanzari_subtab == "scan" else "secondary",
-                     use_container_width=True):
-            st.session_state.vanzari_subtab = "scan"
-            st.rerun()
-    with col_tb2:
-        if st.button("✏️ Introducere Manuală",
-                     type="primary" if st.session_state.vanzari_subtab == "manual" else "secondary",
-                     use_container_width=True):
-            st.session_state.vanzari_subtab = "manual"
-            st.rerun()
-
-    st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 
     retetar_df = citeste_retetar()
     preparate  = sorted(retetar_df["Preparat"].dropna().unique().tolist()) if not retetar_df.empty else []
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ── Sub-tab state ──────────────────────────────────────────────────────
+    if "vanzari_subtab" not in st.session_state:
+        st.session_state.vanzari_subtab = "scanare"
+
+    col_st1, col_st2, _ = st.columns([1, 1, 4])
+    with col_st1:
+        if st.button("📷 Scanare Raport Z",
+                     type="primary" if st.session_state.vanzari_subtab == "scanare" else "secondary"):
+            st.session_state.vanzari_subtab = "scanare"
+            st.rerun()
+    with col_st2:
+        if st.button("✏️ Introducere Manuală",
+                     type="primary" if st.session_state.vanzari_subtab == "manual" else "secondary"):
+            st.session_state.vanzari_subtab = "manual"
+            st.rerun()
+
+    st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════════════════
     #  SUB-TAB A — SCANARE RAPORT Z
-    # ══════════════════════════════════════════════════════════════════════════
-    if st.session_state.vanzari_subtab == "scan":
-        st.markdown('<div class="lana-card">', unsafe_allow_html=True)
-        st.markdown('<div class="lana-eyebrow" style="margin-bottom:0.5rem;">AI · Scanare Raport Z</div>',
-                    unsafe_allow_html=True)
-        st.markdown(
-            '<p style="font-size:0.88rem;color:#6e6e73;margin-bottom:1rem;">'
-            'Fă o poză la Raportul Z sau la bonul de zi. Gemini extrage automat preparatele '
-            'și cantitățile, apoi le potrivește cu rețetarul tău.</p>',
-            unsafe_allow_html=True)
+    # ══════════════════════════════════════════════════════════════════════
+    if st.session_state.vanzari_subtab == "scanare":
+
+        if "raport_z_rezultate" not in st.session_state:
+            st.session_state.raport_z_rezultate = []   # lista de dict {preparat, cant_ai, cant_editata, matched}
+
+        st.markdown("""
+        <div class="lana-card animate-in">
+            <div class="lana-eyebrow" style="margin-bottom:0.5rem;">Pas 1 · Încarcă imaginea</div>
+            <p style="font-size:0.88rem;color:#8e8e93;margin-bottom:0;">
+                Fă o poză la Raportul Z sau la bonurile de la finalul zilei și încarcă-o mai jos.
+                Gemini va extrage automat preparatele și cantitățile.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
         uploaded_z = st.file_uploader(
-            "Raport Z / Bon fiscal de zi (JPG, PNG, WEBP)",
+            "Imagine Raport Z / Bon Fiscal (JPG, PNG, WEBP)",
             type=["jpg","jpeg","png","webp"],
-            key="upload_rapz"
+            key="raport_z_upload"
         )
 
-        if "raport_z_rezultat" not in st.session_state:
-            st.session_state.raport_z_rezultat = []
-
         if uploaded_z:
-            col_img_z, col_act_z = st.columns([1, 2])
-            with col_img_z:
-                img_z = Image.open(io.BytesIO(uploaded_z.read()))
-                st.image(img_z, use_container_width=True, caption="Raport Z")
-                uploaded_z.seek(0)
-            with col_act_z:
-                if st.button("🔍 Analizează cu AI", type="primary", key="btn_rapz"):
-                    with st.spinner("Gemini extrage vânzările din raport…"):
-                        img_bytes_z = uploaded_z.read()
-                        rez_z = extrage_raport_z_ai(img_bytes_z)
+            img_bytes_z = uploaded_z.read()
+            col_zi, col_za = st.columns([1, 2])
+            with col_zi:
+                st.image(Image.open(io.BytesIO(img_bytes_z)), use_container_width=True,
+                         caption="Raport Z / Bon")
+            with col_za:
+                st.markdown('<div class="lana-card-sm">', unsafe_allow_html=True)
+                st.markdown('<div class="lana-eyebrow">OCR cu Gemini AI</div>', unsafe_allow_html=True)
+                st.markdown(
+                    '<p style="font-size:0.85rem;color:#8e8e93;margin-bottom:1rem;">'
+                    'AI-ul extrage preparatele vândute, apoi le potrivește automat '
+                    'cu rețetarul (fuzzy matching).</p>', unsafe_allow_html=True)
+                if st.button("🔍 Scanează Raportul Z", type="primary", key="btn_scan_z"):
+                    if not preparate:
+                        st.warning("Rețetarul este gol. Adaugă preparate în foaia 'Retetar' înainte de scanare.")
+                    else:
+                        with st.spinner("Gemini analizează raportul…"):
+                            rez_z = extrage_raport_z_ai(img_bytes_z)
                         if rez_z and "vanzari" in rez_z:
-                            # Fuzzy matching cu rețetarul
-                            matched = []
+                            rezultate = []
                             for item in rez_z["vanzari"]:
-                                preparat_ai = str(item.get("preparat","")).strip()
-                                cantitate   = _f(item.get("cantitate", 0))
-                                match, score, tip = fuzzy_match(preparat_ai, preparate)
-                                matched.append({
-                                    "preparat_ai":    preparat_ai,
-                                    "preparat_match": match or preparat_ai,
-                                    "cantitate":      cantitate,
-                                    "match_tip":      tip,
-                                    "match_score":    round(score * 100),
+                                ai_name = str(item.get("produs","")).strip()
+                                ai_cant = _f(item.get("cantitate", 0))
+                                matched, score = fuzzy_match_preparat(ai_name, preparate)
+                                rezultate.append({
+                                    "ai_name":  ai_name,
+                                    "preparat": matched if matched else "",
+                                    "cant":     ai_cant,
+                                    "score":    score,
+                                    "matched":  matched is not None,
                                 })
-                            st.session_state.raport_z_rezultat = matched
-                            st.success(f"✓ {len(matched)} preparate detectate. Verifică mai jos.")
+                            st.session_state.raport_z_rezultate = rezultate
+                            st.success(f"✓ {len(rezultate)} preparate detectate de AI.")
                         else:
-                            st.error("AI-ul nu a putut extrage vânzările. Încearcă cu o imagine mai clară.")
+                            st.session_state.raport_z_rezultate = []
+                st.markdown('</div>', unsafe_allow_html=True)
 
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        # ── Tabel de confirmare ───────────────────────────────────────────────
-        if st.session_state.raport_z_rezultat:
-            st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
-            st.markdown('<div class="lana-card">', unsafe_allow_html=True)
-            st.markdown('<div class="lana-eyebrow" style="margin-bottom:1rem;">Confirmare Vânzări · Verifică și corectează</div>',
-                        unsafe_allow_html=True)
-
-            # Header tabel
+        # ── Tabel confirmare ──────────────────────────────────────────────
+        if st.session_state.raport_z_rezultate:
+            st.markdown("<div style='height:0.75rem;'></div>", unsafe_allow_html=True)
             st.markdown("""
-            <div style="display:grid;grid-template-columns:2fr 2fr 1fr 1fr;gap:0.5rem;
-                padding:0.5rem 0;border-bottom:1px solid #3a3a3c;margin-bottom:0.5rem;">
-                <span style="font-size:0.72rem;font-weight:600;letter-spacing:0.08em;
-                    text-transform:uppercase;color:#6e6e73;">AI a scris</span>
-                <span style="font-size:0.72rem;font-weight:600;letter-spacing:0.08em;
-                    text-transform:uppercase;color:#6e6e73;">Potrivit cu Rețetar</span>
-                <span style="font-size:0.72rem;font-weight:600;letter-spacing:0.08em;
-                    text-transform:uppercase;color:#6e6e73;">Match</span>
-                <span style="font-size:0.72rem;font-weight:600;letter-spacing:0.08em;
-                    text-transform:uppercase;color:#6e6e73;">Cantitate</span>
-            </div>""", unsafe_allow_html=True)
+            <div class="lana-card animate-in">
+                <div class="lana-eyebrow" style="margin-bottom:0.75rem;">
+                    Pas 2 · Confirmă și corectează
+                </div>
+                <p style="font-size:0.85rem;color:#8e8e93;margin:0 0 1rem;">
+                    AI-ul a cuplat automat denumirile detectate cu preparatele din rețetar.
+                    Verifică și ajustează cantitățile sau preparatele dacă e nevoie.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
 
             vanzari_confirmate = []
-            for i, item in enumerate(st.session_state.raport_z_rezultat):
-                tip = item["match_tip"]
-                tip_cls = "match-exact" if tip=="exact" else "match-fuzzy" if tip=="fuzzy" else "match-none"
-                tip_label = {"exact":"✓ Exact","fuzzy":f"≈ Fuzzy {item['match_score']}%","none":"✗ Nematch"}.get(tip,"?")
+            for i, row in enumerate(st.session_state.raport_z_rezultate):
+                col_a, col_b, col_c = st.columns([2, 2, 1])
+                with col_a:
+                    badge = (f'<span class="match-badge-ok">✓ {row["score"]*100:.0f}%</span>'
+                             if row["matched"]
+                             else '<span class="match-badge-err">⚠ Necuplat</span>')
+                    st.markdown(
+                        f'<div style="padding-top:1.6rem;">'
+                        f'<span style="font-size:0.78rem;color:#636366;">AI: {row["ai_name"]}</span>'
+                        f'&nbsp;{badge}</div>',
+                        unsafe_allow_html=True)
+                with col_b:
+                    prep_options = ["— alege —"] + preparate
+                    default_idx  = (prep_options.index(row["preparat"])
+                                    if row["preparat"] in prep_options else 0)
+                    sel_prep = st.selectbox(
+                        "Preparat din rețetar",
+                        prep_options,
+                        index=default_idx,
+                        key=f"rz_prep_{i}"
+                    )
+                with col_c:
+                    cant_ed = st.number_input(
+                        "Cant.", value=row["cant"], min_value=0.0, step=1.0,
+                        key=f"rz_cant_{i}"
+                    )
 
-                c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
-                with c1:
-                    st.markdown(f"<div style='padding-top:0.6rem;font-size:0.86rem;color:#aeaeb2;'>{item['preparat_ai']}</div>",
-                                unsafe_allow_html=True)
-                with c2:
-                    if preparate:
-                        default_idx = preparate.index(item["preparat_match"]) if item["preparat_match"] in preparate else 0
-                        preparat_sel = st.selectbox("Preparat", preparate,
-                                                    index=default_idx, key=f"rz_prep_{i}",
-                                                    label_visibility="collapsed")
-                    else:
-                        preparat_sel = st.text_input("Preparat", value=item["preparat_match"],
-                                                     key=f"rz_prep_{i}", label_visibility="collapsed")
-                with c3:
-                    st.markdown(f"<div style='padding-top:0.6rem;'><span class='{tip_cls}'>{tip_label}</span></div>",
-                                unsafe_allow_html=True)
-                with c4:
-                    cant_conf = st.number_input("Cant", value=int(item["cantitate"]),
-                                               min_value=0, step=1, key=f"rz_cant_{i}",
-                                               label_visibility="collapsed")
-
-                if preparat_sel and cant_conf > 0:
+                if sel_prep and sel_prep != "— alege —" and cant_ed > 0:
                     vanzari_confirmate.append({
-                        "Preparat": preparat_sel,
-                        "Cantitate_Vanduta": cant_conf,
+                        "Preparat": sel_prep,
+                        "Cantitate_Vanduta": cant_ed,
                     })
 
-            st.markdown('</div>', unsafe_allow_html=True)
-
-            data_z = st.date_input("Data Raportului Z", value=date.today(), key="data_raport_z")
             st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
+            data_z = st.date_input("Data închiderii (Raport Z)", value=date.today(), key="data_rz")
 
-            if st.button("✅ Înregistrează Închiderea →", type="primary", key="btn_inreg_z"):
+            n_ok = len([v for v in vanzari_confirmate if v["Cantitate_Vanduta"] > 0])
+            st.markdown(f"""
+            <div style="font-size:0.82rem;color:#636366;margin-bottom:0.75rem;">
+                {n_ok} preparate selectate · gata de înregistrare
+            </div>""", unsafe_allow_html=True)
+
+            if st.button("✓ Înregistrează Închiderea →", type="primary", key="btn_inreg_z"):
                 if not vanzari_confirmate:
-                    st.warning("Nu există preparate valide de înregistrat.")
+                    st.warning("Niciun preparat selectat.")
                 else:
                     rows_v = [{"Preparat": v["Preparat"],
                                "Cantitate_Vanduta": v["Cantitate_Vanduta"],
                                "Data": data_z.strftime("%Y-%m-%d")}
                               for v in vanzari_confirmate]
                     salveaza_vanzari(rows_v)
-
-                    # Scade din stoc
-                    stoc_df = citeste_stoc()
-                    if not retetar_df.empty and not stoc_df.empty:
-                        for v in vanzari_confirmate:
-                            prep_v = str(v["Preparat"]).lower().strip()
-                            cant_v = _f(v["Cantitate_Vanduta"])
-                            ings   = retetar_df[retetar_df["Preparat"].str.lower().str.strip() == prep_v]
-                            for _, irow in ings.iterrows():
-                                ing    = str(irow.get("Ingredient","")).lower().strip()
-                                gramaj = _f(irow.get("Gramaj",0)) / 1000.0
-                                consum = cant_v * gramaj
-                                mask   = stoc_df["Produs"].str.lower().str.strip() == ing
-                                if mask.any():
-                                    idx3 = stoc_df[mask].index[0]
-                                    cur  = _f(stoc_df.at[idx3,"Cantitate"])
-                                    stoc_df.at[idx3,"Cantitate"] = max(0, round(cur - consum, 4))
-                        salveaza_stoc(stoc_df)
-
-                    # Verifică stoc critic după înregistrare
-                    stoc_df_nou = citeste_stoc()
-                    critice_post = verifica_stoc_critic(stoc_df_nou)
-                    st.success(f"✓ {len(rows_v)} preparate înregistrate din Raport Z. Stoc actualizat.")
-                    if critice_post:
-                        afiseaza_alerte_stoc(critice_post)
-
-                    st.session_state.raport_z_rezultat = []
+                    stoc_actualizat = scade_stoc_din_vanzari(vanzari_confirmate, retetar_df)
+                    salveaza_stoc(stoc_actualizat)
+                    st.success(f"✓ {len(rows_v)} preparate înregistrate. Stocul a fost actualizat automat.")
+                    st.session_state.raport_z_rezultate = []
                     st.rerun()
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # ══════════════════════════════════════════════════════════════════════
     #  SUB-TAB B — INTRODUCERE MANUALĂ
-    # ══════════════════════════════════════════════════════════════════════════
+    # ══════════════════════════════════════════════════════════════════════
     else:
-        st.markdown('<div class="lana-card">', unsafe_allow_html=True)
-        st.markdown('<div class="lana-eyebrow" style="margin-bottom:1rem;">Introdu Vânzările Manual</div>',
-                    unsafe_allow_html=True)
-        st.markdown('<p style="font-size:0.88rem;color:#6e6e73;margin-bottom:1rem;">'
-                    'Stocul se scade automat din rețetar după înregistrare.</p>',
-                    unsafe_allow_html=True)
-
         if "vanzari_zi" not in st.session_state:
             st.session_state.vanzari_zi = [{"preparat":"","cantitate":0}]
 
-        if st.button("+ Adaugă preparat", key="btn_add_prep"):
+        st.markdown('<div class="lana-card animate-in">', unsafe_allow_html=True)
+        st.markdown('<div class="lana-eyebrow" style="margin-bottom:1rem;">Preparate vândute azi</div>',
+                    unsafe_allow_html=True)
+
+        if st.button("+ Adaugă preparat"):
             st.session_state.vanzari_zi.append({"preparat":"","cantitate":0})
 
         vanzari_input = []
@@ -1294,10 +1270,10 @@ with tab_vanzari:
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-        data_zi = st.date_input("Data închiderii", value=date.today(), key="data_manual")
+        data_zi = st.date_input("Data închiderii", value=date.today())
         st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
 
-        if st.button("Înregistrează Închiderea de Zi →", type="primary", key="btn_inreg_manual"):
+        if st.button("Înregistrează Închiderea de Zi →", type="primary"):
             if not vanzari_input:
                 st.warning("Nu ai introdus niciun preparat.")
             else:
@@ -1306,31 +1282,9 @@ with tab_vanzari:
                            "Data": data_zi.strftime("%Y-%m-%d")}
                           for v in vanzari_input if v["Cantitate_Vanduta"] > 0]
                 salveaza_vanzari(rows_v)
-
-                stoc_df = citeste_stoc()
-                if not retetar_df.empty and not stoc_df.empty:
-                    for v in vanzari_input:
-                        prep_v = str(v["Preparat"]).lower().strip()
-                        cant_v = _f(v["Cantitate_Vanduta"])
-                        ings   = retetar_df[retetar_df["Preparat"].str.lower().str.strip() == prep_v]
-                        for _, irow in ings.iterrows():
-                            ing    = str(irow.get("Ingredient","")).lower().strip()
-                            gramaj = _f(irow.get("Gramaj",0)) / 1000.0
-                            consum = cant_v * gramaj
-                            mask   = stoc_df["Produs"].str.lower().str.strip() == ing
-                            if mask.any():
-                                idx3 = stoc_df[mask].index[0]
-                                cur  = _f(stoc_df.at[idx3,"Cantitate"])
-                                stoc_df.at[idx3,"Cantitate"] = max(0, round(cur - consum, 4))
-                    salveaza_stoc(stoc_df)
-
-                # Alerte stoc critic după înregistrare
-                stoc_df_nou = citeste_stoc()
-                critice_post = verifica_stoc_critic(stoc_df_nou)
+                stoc_actualizat = scade_stoc_din_vanzari(vanzari_input, retetar_df)
+                salveaza_stoc(stoc_actualizat)
                 st.success(f"✓ {len(rows_v)} preparate înregistrate. Stocul actualizat.")
-                if critice_post:
-                    afiseaza_alerte_stoc(critice_post)
-
                 st.session_state.vanzari_zi = [{"preparat":"","cantitate":0}]
                 st.rerun()
 
@@ -1344,30 +1298,26 @@ with tab_setari:
                 unsafe_allow_html=True)
 
     cfg = citeste_config()
-
     col_s1, col_s2 = st.columns(2)
 
     with col_s1:
         st.markdown('<div class="lana-card">', unsafe_allow_html=True)
         st.markdown('<div class="lana-eyebrow" style="margin-bottom:1rem;">Regim Fiscal</div>',
                     unsafe_allow_html=True)
-
         regim_opts   = {"Micro 1%":"micro1","Micro 3%":"micro3","Profit 16%":"profit16"}
         regim_rev    = {v:k for k,v in regim_opts.items()}
         regim_actual = regim_rev.get(str(cfg.get("regim_fiscal","micro1")),"Micro 1%")
-        regim_sel    = st.selectbox("Regim fiscal", list(regim_opts.keys()),
+        regim_sel    = st.selectbox("Regim fiscal",list(regim_opts.keys()),
                                     index=list(regim_opts.keys()).index(regim_actual))
-
         tva_opts   = {"TVA 9% (restaurante)":0.09,"TVA 19% (standard)":0.19}
         tva_rev    = {v:k for k,v in tva_opts.items()}
         tva_actual = tva_rev.get(_f(cfg.get("cota_tva",0.09)),"TVA 9% (restaurante)")
-        tva_sel    = st.selectbox("TVA", list(tva_opts.keys()),
+        tva_sel    = st.selectbox("TVA",list(tva_opts.keys()),
                                    index=list(tva_opts.keys()).index(tva_actual))
-
         div_opts   = {"Impozit dividend 8%":0.08,"Impozit dividend 10%":0.10}
         div_rev    = {v:k for k,v in div_opts.items()}
         div_actual = div_rev.get(_f(cfg.get("cota_dividend",0.08)),"Impozit dividend 8%")
-        div_sel    = st.selectbox("Dividend", list(div_opts.keys()),
+        div_sel    = st.selectbox("Dividend",list(div_opts.keys()),
                                    index=list(div_opts.keys()).index(div_actual))
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1375,11 +1325,11 @@ with tab_setari:
         st.markdown('<div class="lana-card">', unsafe_allow_html=True)
         st.markdown('<div class="lana-eyebrow" style="margin-bottom:1rem;">Cheltuieli Lunare Fixe (RON)</div>',
                     unsafe_allow_html=True)
-        chirie    = st.number_input("Chirie lunară",    value=_f(cfg.get("chirie_lunara",0)),
+        chirie    = st.number_input("Chirie lunară",   value=_f(cfg.get("chirie_lunara",0)),
                                     min_value=0.0, step=100.0, format="%.2f")
-        salarii   = st.number_input("Salarii lunare",   value=_f(cfg.get("salarii_lunare",0)),
+        salarii   = st.number_input("Salarii lunare",  value=_f(cfg.get("salarii_lunare",0)),
                                     min_value=0.0, step=100.0, format="%.2f")
-        utilitati = st.number_input("Utilități lunare", value=_f(cfg.get("utilitati_lunare",0)),
+        utilitati = st.number_input("Utilități lunare",value=_f(cfg.get("utilitati_lunare",0)),
                                     min_value=0.0, step=100.0, format="%.2f")
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1391,9 +1341,9 @@ with tab_setari:
 
     st.markdown(f"""
     <div class="lana-card-sm" style="display:inline-block;margin-top:0.5rem;">
-        <span style="font-size:0.8rem;color:#6e6e73;">Regie fixă per bon: </span>
+        <span style="font-size:0.8rem;color:#8e8e93;">Regie fixă per bon: </span>
         <span style="font-size:1.1rem;font-weight:700;color:#0a84ff;">{regie_bon:.2f} RON</span>
-        <span style="font-size:0.78rem;color:#6e6e73;"> / client</span>
+        <span style="font-size:0.78rem;color:#48484a;"> / client</span>
     </div>""", unsafe_allow_html=True)
 
     st.markdown("<div style='height:0.75rem;'></div>", unsafe_allow_html=True)
@@ -1429,29 +1379,32 @@ with tab_sim:
         pret_vz = st.number_input(
             "Preț vânzare (cu TVA) · RON",
             min_value=0.0, step=0.5, format="%.2f",
-            help="Introdu prețul direct sau folosește sliderul de mai jos pentru ajustare fină."
+            help="Introdu prețul direct sau ajustează cu sliderul de mai jos"
         )
 
-    # ── Slider sincronizat cu input manual ───────────────────────────────────
-    slider_min = max(0.5, pret_vz - 20) if pret_vz > 0 else 0.5
+    # Slider + input manual sincronizat
+    st.markdown('<div class="lana-eyebrow" style="margin-top:0.25rem;">Ajustare rapidă preț</div>',
+                unsafe_allow_html=True)
+    slider_min = max(1.0, pret_vz - 20) if pret_vz > 0 else 1.0
     slider_max = pret_vz + 40 if pret_vz > 0 else 100.0
     slider_val = float(pret_vz) if pret_vz > 0 else 20.0
-
     pret_slider = st.slider(
-        "Ajustează prețul (RON)",
+        "Preț slider (RON)",
         min_value=slider_min,
         max_value=slider_max,
         value=slider_val,
         step=0.5,
-        help="Mișcă sliderul sau schimbă prețul direct în câmpul de mai sus.",
+        label_visibility="collapsed"
     )
-    # Prețul activ = cel mai mare dintre ce s-a tastat și slider (slider câștigă dacă diferit)
-    pret_calc = pret_slider if abs(pret_slider - slider_val) > 0.01 else (pret_vz if pret_vz > 0 else pret_slider)
+    # Prețul activ = cel mai mare dintre input manual și slider, dacă diferă
+    # Logică: dacă utilizatorul a setat manual un preț > 0, îl folosim; altfel sliderul
+    pret_calc = pret_vz if pret_vz > 0 and abs(pret_vz - slider_val) > 0.01 else pret_slider
 
     st.markdown(f"""
-    <div style="display:inline-flex;align-items:center;gap:0.5rem;margin-top:-0.5rem;margin-bottom:1rem;">
-        <span style="font-size:0.78rem;color:#6e6e73;">Preț activ:</span>
-        <span style="font-size:1.2rem;font-weight:700;color:#0a84ff;">{pret_calc:.2f} RON</span>
+    <div style="font-size:0.82rem;color:#636366;margin-bottom:1rem;">
+        Preț activ: <strong style="color:#0a84ff;font-size:1rem;">{pret_calc:.2f} RON</strong>
+        &nbsp;·&nbsp;
+        <span style="color:#48484a;">Modifică numărul de sus sau trage sliderul</span>
     </div>""", unsafe_allow_html=True)
 
     nr_ing = st.number_input("Număr ingrediente", min_value=1, max_value=20, value=3, step=1)
@@ -1463,7 +1416,7 @@ with tab_sim:
         col_a, col_b = st.columns([2.5, 1])
         with col_a:
             if produse_stoc:
-                ing = st.selectbox("Ingredient", ["— alege —"] + produse_stoc, key=f"si_{i}")
+                ing = st.selectbox("Ingredient",["— alege —"] + produse_stoc, key=f"si_{i}")
             else:
                 ing = st.text_input("Ingredient", key=f"si_{i}", placeholder="Ingredient")
         with col_b:
@@ -1481,13 +1434,12 @@ with tab_sim:
             for x in ingrediente_sim
         )
         nr_cl   = _f(cfg_sim.get("nr_clienti_lunar", 500))
-        fixe    = (_f(cfg_sim.get("chirie_lunara",0)) +
-                   _f(cfg_sim.get("salarii_lunare",0)) +
-                   _f(cfg_sim.get("utilitati_lunare",0)))
+        fixe    = (_f(cfg_sim.get("chirie_lunara",0)) + _f(cfg_sim.get("salarii_lunare",0))
+                   + _f(cfg_sim.get("utilitati_lunare",0)))
         regie_s = fixe / nr_cl if nr_cl > 0 else 0
         c_sim   = cascada(pret_calc, fc_sim + regie_s, cfg_sim)
-        c_sim["food_cost"]              = round(fc_sim, 2)
-        c_sim["cheltuieli_fixe_zilnice"] = round(regie_s, 2)
+        c_sim["food_cost"]               = round(fc_sim, 2)
+        c_sim["cheltuieli_fixe_zilnice"]  = round(regie_s, 2)
 
         col_bon, col_rec = st.columns([1, 1])
         with col_bon:
@@ -1500,13 +1452,14 @@ with tab_sim:
                 ci_s      = {"micro1":0.01,"micro3":0.03,"profit16":0.16}.get(str(regim_s),0.01)
                 cd_s      = _f(cfg_sim.get("cota_dividend", 0.08))
                 factor    = (1 - ci_s) * (1 - cd_s)
-                pret_rec  = ((fc_sim + regie_s) / (factor * 0.8)) * (1 + cota_tva) if factor > 0 else (fc_sim + regie_s) * 3
+                pret_rec  = (((fc_sim + regie_s) / (factor * 0.8)) * (1 + cota_tva)
+                             if factor > 0 else (fc_sim + regie_s) * 3)
                 st.markdown(f"""
-                <div class="lana-card-sm" style="border-color:rgba(255,69,58,.4);">
+                <div class="lana-card-sm animate-in" style="border-color:#ff453a;">
                     <div style="font-size:0.95rem;font-weight:600;color:#ff453a;margin-bottom:0.5rem;">
                         ⚠ Marjă insuficientă ({marja:.1f}%)
                     </div>
-                    <div style="font-size:0.85rem;color:#aeaeb2;line-height:1.6;">
+                    <div style="font-size:0.85rem;color:#8e8e93;line-height:1.6;">
                         Ajustează prețul sau reduce ingredientele costisitoare.<br>
                         <strong style="color:#f5f5f7;">Preț recomandat pentru marjă 20%:</strong><br>
                         <span style="font-size:1.1rem;font-weight:700;color:#ff453a;">{pret_rec:.2f} RON</span>
@@ -1514,47 +1467,47 @@ with tab_sim:
                 </div>""", unsafe_allow_html=True)
             elif marja <= 20:
                 st.markdown(f"""
-                <div class="lana-card-sm" style="border-color:rgba(255,214,10,.3);">
-                    <div style="font-size:0.95rem;font-weight:600;color:#ffd60a;margin-bottom:0.5rem;">
+                <div class="lana-card-sm animate-in" style="border-color:#ff9f0a;">
+                    <div style="font-size:0.95rem;font-weight:600;color:#ff9f0a;margin-bottom:0.5rem;">
                         ℹ Marjă acceptabilă ({marja:.1f}%)
                     </div>
-                    <div style="font-size:0.85rem;color:#aeaeb2;line-height:1.6;">
-                        Există loc de optimizare. Caută furnizori mai competitivi.
+                    <div style="font-size:0.85rem;color:#8e8e93;line-height:1.6;">
+                        Există loc de optimizare. Caută furnizori mai competitivi pentru ingredientele cheie.
                     </div>
                 </div>""", unsafe_allow_html=True)
             else:
                 st.markdown(f"""
-                <div class="lana-card-sm" style="border-color:rgba(48,209,88,.3);">
+                <div class="lana-card-sm animate-in" style="border-color:#30d158;">
                     <div style="font-size:0.95rem;font-weight:600;color:#30d158;margin-bottom:0.5rem;">
                         ✓ Marjă excelentă ({marja:.1f}%)
                     </div>
-                    <div style="font-size:0.85rem;color:#aeaeb2;line-height:1.6;">
+                    <div style="font-size:0.85rem;color:#8e8e93;line-height:1.6;">
                         Preparatul este viabil comercial. Îl poți introduce cu încredere în meniu.
                     </div>
                 </div>""", unsafe_allow_html=True)
 
             st.markdown(f"""
-            <div class="lana-card-sm" style="margin-top:0.75rem;">
+            <div class="lana-card-sm animate-in animate-in-delay-1" style="margin-top:0.75rem;">
                 <div class="lana-eyebrow" style="margin-bottom:0.75rem;">Detalii calcul</div>
                 <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.86rem;">
-                    <span style="color:#6e6e73;">Food cost ingrediente</span>
+                    <span style="color:#8e8e93;">Food cost ingrediente</span>
                     <span style="color:#f5f5f7;font-weight:500;">{fc_sim:.2f} RON</span>
                 </div>
                 <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.86rem;">
-                    <span style="color:#6e6e73;">Regie fixă / client</span>
+                    <span style="color:#8e8e93;">Regie fixă / client</span>
                     <span style="color:#f5f5f7;font-weight:500;">{regie_s:.2f} RON</span>
                 </div>
                 <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.86rem;">
-                    <span style="color:#6e6e73;">Preț activ</span>
+                    <span style="color:#8e8e93;">Preț vânzare activ</span>
                     <span style="color:#0a84ff;font-weight:600;">{pret_calc:.2f} RON</span>
                 </div>
             </div>""", unsafe_allow_html=True)
     else:
         st.markdown("""
-        <div class="lana-card" style="text-align:center;padding:2.5rem;">
-            <div style="font-size:2rem;margin-bottom:0.5rem;">🧪</div>
-            <div style="font-size:0.9rem;color:#aeaeb2;font-weight:500;">
-                Adaugă ingrediente și setează un preț pentru a vedea simularea.
+        <div class="lana-card-sm" style="text-align:center;padding:2rem;border-style:dashed;">
+            <div style="font-size:1.8rem;margin-bottom:0.5rem;">🧮</div>
+            <div style="font-size:0.88rem;color:#8e8e93;">
+                Adaugă cel puțin un ingredient și setează un preț pentru a vedea simularea.
             </div>
         </div>""", unsafe_allow_html=True)
 
@@ -1564,8 +1517,8 @@ with tab_sim:
 st.markdown("""
 <div style="text-align:center;padding:2.5rem 0 1.5rem;
     border-top:1px solid #2c2c2e;margin-top:3rem;">
-    <span style="font-size:0.8rem;color:#3a3a3c;">
-        ◈ <strong style="color:#48484a;">Lana Advisory</strong>
+    <span style="font-size:0.8rem;color:#48484a;">
+        ◈ <strong style="color:#636366;">Lana Advisory</strong>
         &nbsp;·&nbsp; Consultantul tău digital de buzunar
         &nbsp;·&nbsp; Powered by Gemini AI
     </span>
