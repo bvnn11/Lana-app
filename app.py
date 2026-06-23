@@ -396,7 +396,7 @@ if not st.session_state.auth_ok:
     st.markdown(f"""
     <div class="login-wrap animate-in">
         <div class="login-logo">M<span>IA</span></div>
-        <div class="login-tagline">Restaurant Intelligence · powered by AI</div>
+        <div class="login-tagline">Gestiune restaurant · simplă și rapidă</div>
     </div>
     """, unsafe_allow_html=True)
     col_l, col_m, col_r = st.columns([1, 1.2, 1])
@@ -427,25 +427,22 @@ st.markdown(f"""
 # ─────────────────────────────────────────────────────────────────────────────
 # RSA / JWT helpers (identic cu Lana)
 # ─────────────────────────────────────────────────────────────────────────────
-def _load_rsa_key(pem: str):
-    pem = pem.strip()
-    lines = [l for l in pem.split('\n') if not l.startswith('-----')]
-    der   = base64.b64decode(''.join(lines))
-    from cryptography.hazmat.primitives.serialization import load_der_private_key
-    key   = load_der_private_key(der, password=None)
-    priv  = key.private_numbers()
-    return priv.public_numbers.n, priv.d
+def _load_rsa_key_obj(pem: str):
+    """Încarcă cheia privată RSA direct din PEM (fără conversie DER manuală)."""
+    from cryptography.hazmat.primitives.serialization import load_pem_private_key
+    pem_bytes = pem.strip().encode("utf-8")
+    return load_pem_private_key(pem_bytes, password=None)
 
-def _rsa_sign(msg: bytes, n: int, d: int) -> bytes:
+def _rsa_sign(msg: bytes, *args) -> bytes:
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.asymmetric import padding
-    from cryptography.hazmat.primitives.serialization import load_der_private_key
     sa  = dict(st.secrets["gcp_service_account"])
-    pem = sa["private_key"].strip()
-    lines = [l for l in pem.split('\n') if not l.startswith('-----')]
-    der   = base64.b64decode(''.join(lines))
-    key   = load_der_private_key(der, password=None)
+    key = _load_rsa_key_obj(sa["private_key"])
     return key.sign(msg, padding.PKCS1v15(), hashes.SHA256())
+
+def _load_rsa_key(pem: str):
+    """Menținut pentru compatibilitate — returnează (0, 0) deoarece semnarea se face direct."""
+    return (0, 0)
 
 def b64u(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b'=').decode()
@@ -656,10 +653,10 @@ def _similarity(a: str, b: str) -> float:
     prefix_bonus = 0.3 if longer.startswith(shorter) else 0.0
     return min(1.0, overlap + prefix_bonus)
 
-def fuzzy_match_preparat(ai_name: str, preparate_list: list, threshold: float = 0.35):
+def fuzzy_match_preparat(nume_detectat: str, preparate_list: list, threshold: float = 0.35):
     best, best_score = None, 0.0
     for prep in preparate_list:
-        sc = _similarity(ai_name, prep)
+        sc = _similarity(nume_detectat, prep)
         if sc > best_score:
             best_score = sc
             best = prep
@@ -686,10 +683,10 @@ def _gemini_call(img_bytes: bytes, prompt: str) -> dict | None:
         raw = raw.replace("```json","").replace("```","").strip()
         return json.loads(raw)
     except json.JSONDecodeError:
-        st.error("AI-ul nu a returnat JSON valid. Încearcă cu o imagine mai clară.")
+        st.error("Extragerea nu a returnat date valide. Încearcă cu o imagine mai clară sau mai bine luminată.")
         return None
     except Exception as e:
-        st.error(f"Eroare AI: {e}"); return None
+        st.error(f"Eroare procesare: {e}"); return None
 
 def extrage_factura_ai(img_bytes: bytes) -> dict | None:
     prompt = (
@@ -982,16 +979,50 @@ with tab_dash:
 with tab_stoc:
     st.markdown('<p class="mia-eyebrow">Gestiune inventar</p>', unsafe_allow_html=True)
     st.markdown('<h1 class="mia-title">Stoc</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="mia-subtitle">Stocul se actualizează automat la scanarea facturilor și a Rapoartelor Z.</p>',
+    st.markdown('<p class="mia-subtitle">Adaugă produse manual sau prin scanare facturi. Stocul se scade automat din Raportul Z.</p>',
                 unsafe_allow_html=True)
 
     stoc_df = citeste_stoc()
 
-    col_s1, col_s2 = st.columns([3, 1])
+    col_s1, col_s2, col_s3 = st.columns([3, 1, 1])
     with col_s2:
-        if st.button("🔄 Reîncarcă stocul", use_container_width=True):
+        if st.button("➕ Adaugă produs", type="primary", use_container_width=True, key="btn_show_add"):
+            st.session_state["show_add_stoc"] = not st.session_state.get("show_add_stoc", False)
+    with col_s3:
+        if st.button("🔄 Reîncarcă", use_container_width=True):
             st.cache_resource.clear()
             st.rerun()
+
+    # Formular adăugare manuală — vizibil dacă butonul e apăsat
+    if st.session_state.get("show_add_stoc", False):
+        st.markdown(f"""
+        <div class="mia-card animate-in" style="border-color:{MIA_PURPLE_MID};background:#FAFAFF;">
+            <div class="mia-eyebrow" style="margin-bottom:0.75rem;">➕ Adaugă / Actualizează produs în stoc</div>
+        </div>""", unsafe_allow_html=True)
+        ca, cb, cc, cd, ce = st.columns([2.5, 1, 1, 1, 1])
+        with ca: nm = st.text_input("Produs *", key="stoc_nm2", placeholder="ex: Făină albă")
+        with cb: qm = st.number_input("Cantitate", min_value=0.0, step=0.1, key="stoc_qm2")
+        with cc: um = st.selectbox("UM", ["kg","g","l","ml","buc"], key="stoc_um2")
+        with cd: pm = st.number_input("Preț/UM (RON)", min_value=0.0, step=0.1, key="stoc_pm2")
+        with ce: sm = st.number_input("Stoc minim", min_value=0.0, step=0.1, key="stoc_sm2",
+                                      help="Cantitate minimă sub care primești alertă")
+        col_btn_a, col_btn_b, _ = st.columns([1.2, 1, 3])
+        with col_btn_a:
+            if st.button("💾 Salvează produs", type="primary", key="btn_stoc_save2"):
+                if nm.strip():
+                    adauga_in_stoc([{"Produs": nm.strip(), "Cantitate": qm, "Unitate": um,
+                                     "Pret_Unitar": pm, "Data": date.today().strftime("%Y-%m-%d"),
+                                     "Stoc_Minim": sm}])
+                    st.success(f"✓ '{nm}' salvat în stoc.")
+                    st.session_state["show_add_stoc"] = False
+                    st.rerun()
+                else:
+                    st.warning("Completează numele produsului.")
+        with col_btn_b:
+            if st.button("Anulează", key="btn_stoc_cancel"):
+                st.session_state["show_add_stoc"] = False
+                st.rerun()
+        st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
 
     if stoc_df.empty:
         st.markdown(f"""
@@ -999,7 +1030,8 @@ with tab_stoc:
             <div style="font-size:2.5rem;margin-bottom:0.8rem;">📦</div>
             <div style="font-size:1rem;font-weight:600;color:{MIA_TEXT};">Stocul este gol</div>
             <div style="font-size:0.85rem;color:{MIA_MUTED};margin-top:6px;">
-                Scanează o factură pentru a adăuga produse în stoc.
+                Apasă <strong>➕ Adaugă produs</strong> pentru a adăuga manual,<br>
+                sau scanează o factură din tab-ul <em>Scanare Facturi</em>.
             </div>
         </div>""", unsafe_allow_html=True)
     else:
@@ -1046,31 +1078,15 @@ with tab_stoc:
             use_container_width=True, hide_index=True
         )
 
-        # Adaugă produs manual
-        with st.expander("➕ Adaugă/Editează produs manual"):
-            ca, cb, cc, cd, ce = st.columns([2.5,1,1,1,1])
-            with ca: nm = st.text_input("Produs", key="stoc_nm", placeholder="ex: Făină")
-            with cb: qm = st.number_input("Cantitate", min_value=0.0, step=0.1, key="stoc_qm")
-            with cc:
-                um = st.selectbox("UM", ["kg","g","l","ml","buc"], key="stoc_um")
-            with cd: pm = st.number_input("Preț/UM", min_value=0.0, step=0.1, key="stoc_pm")
-            with ce: sm = st.number_input("Minim", min_value=0.0, step=0.1, key="stoc_sm",
-                                           help="Stoc minim pentru alertă")
-            if st.button("Salvează produs →", type="primary", key="btn_stoc_save"):
-                if nm:
-                    adauga_in_stoc([{"Produs":nm,"Cantitate":qm,"Unitate":um,
-                                     "Pret_Unitar":pm,"Data":date.today().strftime("%Y-%m-%d"),
-                                     "Stoc_Minim":sm}])
-                    st.success(f"✓ '{nm}' salvat în stoc.")
-                    st.rerun()
+        st.markdown("<div style='height:0.25rem;'></div>", unsafe_allow_html=True)
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  TAB 3 — SCANARE FACTURI → STOC
 # ═════════════════════════════════════════════════════════════════════════════
 with tab_facturi:
-    st.markdown('<p class="mia-eyebrow">AI · Gemini 1.5 Flash</p>', unsafe_allow_html=True)
+    st.markdown('<p class="mia-eyebrow">Procesare automată · Gemini Vision</p>', unsafe_allow_html=True)
     st.markdown('<h1 class="mia-title">Scanare Facturi</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="mia-subtitle">Scanează factura → AI extrage produsele → Se adaugă automat în stoc.</p>',
+    st.markdown('<p class="mia-subtitle">Fotografiază factura → produsele sunt extrase automat → Se adaugă în stoc.</p>',
                 unsafe_allow_html=True)
 
     if "produse_factura" not in st.session_state:
@@ -1088,12 +1104,12 @@ with tab_facturi:
             st.image(Image.open(io.BytesIO(img_bytes)), use_container_width=True, caption="Factură")
         with col_act:
             st.markdown('<div class="mia-card-sm">', unsafe_allow_html=True)
-            st.markdown(f'<div class="mia-eyebrow">Procesare AI</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="mia-eyebrow">Extragere automată date</div>', unsafe_allow_html=True)
             st.markdown(
                 f'<p style="font-size:0.88rem;color:{MIA_MUTED};margin-bottom:1rem;">'
-                'Gemini 1.5 Flash identifică furnizorul, numărul facturii, '
+                'Sistemul identifică furnizorul, numărul facturii, '
                 'produsele, cantitățile și prețurile unitare.</p>', unsafe_allow_html=True)
-            if st.button("🔍 Extrage cu AI", type="primary", key="btn_extrage_fact"):
+            if st.button("🔍 Extrage date din factură", type="primary", key="btn_extrage_fact"):
                 with st.spinner("Gemini analizează factura…"):
                     rez = extrage_factura_ai(img_bytes)
                     if rez and "produse" in rez:
@@ -1220,9 +1236,9 @@ with tab_facturi:
 #  TAB 4 — RAPORT Z → SCĂDERE STOC
 # ═════════════════════════════════════════════════════════════════════════════
 with tab_z:
-    st.markdown('<p class="mia-eyebrow">Închidere de zi · AI</p>', unsafe_allow_html=True)
+    st.markdown('<p class="mia-eyebrow">Închidere de zi · scanare automată</p>', unsafe_allow_html=True)
     st.markdown('<h1 class="mia-title">Raport Z</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="mia-subtitle">Scanează Raportul Z → AI extrage vânzările → Stocul se scade automat pe baza rețetarului.</p>',
+    st.markdown('<p class="mia-subtitle">Fotografiază Raportul Z → vânzările sunt extrase automat → Stocul se scade pe baza rețetarului.</p>',
                 unsafe_allow_html=True)
 
     retetar_df_z = citeste_retetar()
@@ -1270,10 +1286,10 @@ with tab_z:
                 st.image(Image.open(io.BytesIO(img_bytes_z)), use_container_width=True, caption="Raport Z")
             with col_za:
                 st.markdown('<div class="mia-card-sm">', unsafe_allow_html=True)
-                st.markdown(f'<div class="mia-eyebrow">OCR cu Gemini AI</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="mia-eyebrow">Recunoaștere text · Gemini Vision</div>', unsafe_allow_html=True)
                 st.markdown(
                     f'<p style="font-size:0.85rem;color:{MIA_MUTED};margin-bottom:1rem;">'
-                    'AI-ul extrage preparatele vândute și le cuplează automat cu rețetarul.</p>',
+                    'Sistemul extrage preparatele vândute și le cuplează automat cu rețetarul.</p>',
                     unsafe_allow_html=True)
                 if st.button("🔍 Scanează Raportul Z", type="primary", key="btn_scan_z"):
                     if not preparate_z:
@@ -1289,6 +1305,7 @@ with tab_z:
                                 matched, score = fuzzy_match_preparat(ai_name, preparate_z)
                                 rezultate.append({
                                     "ai_name": ai_name, "preparat": matched if matched else "",
+
                                     "cant": ai_cant, "score": score, "matched": matched is not None,
                                 })
                             st.session_state.raport_z_rezultate = rezultate
@@ -1317,7 +1334,7 @@ with tab_z:
                              else '<span class="match-badge-err">⚠ Necuplat</span>')
                     st.markdown(
                         f'<div style="padding-top:1.6rem;">'
-                        f'<span style="font-size:0.78rem;color:{MIA_FAINT};">AI: {row["ai_name"]}</span>'
+                        f'<span style="font-size:0.78rem;color:{MIA_FAINT};">Detectat: {row["ai_name"]}</span>'
                         f'&nbsp;{badge}</div>',
                         unsafe_allow_html=True)
                 with col_b:
@@ -1697,7 +1714,7 @@ st.markdown(f"""
     <span style="font-size:0.8rem;color:{MIA_FAINT};">
         ✦ <strong style="color:{MIA_PURPLE};">MIA</strong>
         &nbsp;·&nbsp; Restaurant Intelligence
-        &nbsp;·&nbsp; Powered by Gemini AI
+        &nbsp;·&nbsp; Gestiune inteligentă
     </span>
 </div>
 """, unsafe_allow_html=True)
