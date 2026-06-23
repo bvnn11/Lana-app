@@ -1,9 +1,9 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-#  LANA · Advisory Platform  —  app.py
-#  Design: Apple Dark Mode (macOS) · Inter font
-#  Auth: hardcoded (serban / lana)
+#  MIA · Restaurant Intelligence Platform  —  app.py
+#  Design: Apple Light Mode · alb + mov (violet) · Inter font
+#  Auth: hardcoded (serban / mia)
 #  Connections: st.secrets → gcp_service_account, spreadsheet_id, GEMINI_API_KEY
-#  v2: Scanare Raport Z cu OCR + fuzzy matching + dark mode + simulator upgrade
+#  v3: Scanare Facturi → Stoc | Scanare Raport Z → Scădere Stoc | Food Cost auto
 # ═══════════════════════════════════════════════════════════════════════════════
 
 import streamlit as st
@@ -28,475 +28,429 @@ UNITATI_VALIDE = {
 SHEETS_BASE = "https://sheets.googleapis.com/v4/spreadsheets"
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
+# Paleta MIA — Apple Light cu accente mov
+MIA_PURPLE      = "#7C3AED"   # violet principal
+MIA_PURPLE_SOFT = "#EDE9FE"   # violet foarte deschis (fundal badge)
+MIA_PURPLE_MID  = "#DDD6FE"   # violet mediu
+MIA_BG          = "#F9F9FB"   # fundal pagină (aproape alb)
+MIA_SURFACE     = "#FFFFFF"   # carduri
+MIA_BORDER      = "#E5E7EB"   # borduri subtile
+MIA_TEXT        = "#111827"   # text principal
+MIA_MUTED       = "#6B7280"   # text secundar
+MIA_FAINT       = "#9CA3AF"   # text terțiar
+MIA_GREEN       = "#059669"
+MIA_RED         = "#DC2626"
+MIA_AMBER       = "#D97706"
+MIA_BLUE        = "#2563EB"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PAGE CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Lana Advisory",
-    page_icon="◈",
+    page_title="MIA · Restaurant Intelligence",
+    page_icon="✦",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
-# GLOBAL CSS — Apple Dark Mode (macOS Sequoia), Inter, subtle animations
+# GLOBAL CSS — Apple Light, Inter, mov/violet accent
 # ─────────────────────────────────────────────────────────────────────────────
-st.markdown("""
+st.markdown(f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
-/* ── Reset & dark base ── */
-html, body, [class*="css"], [class*="st-"] {
+html, body, [class*="css"], [class*="st-"] {{
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
-}
+}}
 #MainMenu, header, footer,
 [data-testid="stToolbar"],
 [data-testid="collapsedControl"],
-[data-testid="stSidebarNav"]          { display: none !important; }
+[data-testid="stSidebarNav"] {{ display: none !important; }}
 
-.stApp                                { background: #000000 !important; }
-[data-testid="stSidebar"]             { display: none !important; }
+.stApp {{ background: {MIA_BG} !important; }}
+[data-testid="stSidebar"] {{ display: none !important; }}
 
-/* ── Scrollbar dark ── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #1c1c1e; }
-::-webkit-scrollbar-thumb { background: #3a3a3c; border-radius: 3px; }
+/* Scrollbar */
+::-webkit-scrollbar {{ width: 5px; height: 5px; }}
+::-webkit-scrollbar-track {{ background: #F3F4F6; }}
+::-webkit-scrollbar-thumb {{ background: #D1D5DB; border-radius: 3px; }}
+::-webkit-scrollbar-thumb:hover {{ background: #9CA3AF; }}
 
-/* ── Animations ── */
-@keyframes fadeUp {
-    from { opacity: 0; transform: translateY(12px); }
-    to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes shimmer {
-    0%   { background-position: -400px 0; }
-    100% { background-position: 400px 0; }
-}
-.animate-in {
-    animation: fadeUp 0.35s cubic-bezier(0.16,1,0.3,1) both;
-}
-.animate-in-delay-1 { animation-delay: 0.05s; }
-.animate-in-delay-2 { animation-delay: 0.10s; }
-.animate-in-delay-3 { animation-delay: 0.15s; }
+/* Animations */
+@keyframes fadeUp {{
+    from {{ opacity: 0; transform: translateY(10px); }}
+    to   {{ opacity: 1; transform: translateY(0); }}
+}}
+.animate-in {{ animation: fadeUp 0.3s cubic-bezier(0.16,1,0.3,1) both; }}
+.animate-in-delay-1 {{ animation-delay: 0.06s; }}
+.animate-in-delay-2 {{ animation-delay: 0.12s; }}
+.animate-in-delay-3 {{ animation-delay: 0.18s; }}
 
-/* ── Typography helpers ── */
-.lana-eyebrow {
-    font-size: 0.68rem; font-weight: 600; letter-spacing: 0.1em;
-    text-transform: uppercase; color: #636366; margin-bottom: 0.4rem;
-}
-.lana-title {
-    font-size: 2rem; font-weight: 700; letter-spacing: -0.03em;
-    color: #f5f5f7; line-height: 1.1; margin-bottom: 0.35rem;
-}
-.lana-subtitle { font-size: 0.9rem; color: #636366; margin-bottom: 1.8rem; }
+/* ── Typography ── */
+.mia-eyebrow {{
+    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase; color: {MIA_PURPLE}; margin-bottom: 0.35rem;
+}}
+.mia-title {{
+    font-size: 2rem; font-weight: 800; letter-spacing: -0.04em;
+    color: {MIA_TEXT}; line-height: 1.1; margin-bottom: 0.3rem;
+}}
+.mia-subtitle {{ font-size: 0.9rem; color: {MIA_MUTED}; margin-bottom: 1.6rem; }}
 
 /* ── Cards ── */
-.lana-card {
-    background: #1c1c1e;
-    border: 1px solid #2c2c2e;
+.mia-card {{
+    background: {MIA_SURFACE};
+    border: 1px solid {MIA_BORDER};
     border-radius: 16px;
     padding: 1.5rem 1.8rem;
-    box-shadow: 0 2px 12px rgba(0,0,0,.4);
+    box-shadow: 0 1px 4px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
     margin-bottom: 1rem;
-    transition: border-color 0.2s ease;
-}
-.lana-card:hover { border-color: #3a3a3c; }
-.lana-card-sm {
-    background: #1c1c1e;
-    border: 1px solid #2c2c2e;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}}
+.mia-card:hover {{
+    box-shadow: 0 2px 8px rgba(124,58,237,.08), 0 8px 24px rgba(0,0,0,.06);
+    border-color: {MIA_PURPLE_MID};
+}}
+.mia-card-sm {{
+    background: {MIA_SURFACE};
+    border: 1px solid {MIA_BORDER};
     border-radius: 12px;
-    padding: 1.25rem 1.5rem;
-    box-shadow: 0 1px 6px rgba(0,0,0,.3);
-}
+    padding: 1.2rem 1.5rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,.05);
+}}
 
 /* ── Metric cards ── */
-.metric-card {
-    background: #1c1c1e;
-    border: 1px solid #2c2c2e;
+.metric-card {{
+    background: {MIA_SURFACE};
+    border: 1px solid {MIA_BORDER};
     border-radius: 16px;
     padding: 1.4rem 1.6rem;
-    box-shadow: 0 2px 10px rgba(0,0,0,.35);
+    box-shadow: 0 1px 4px rgba(0,0,0,.05);
     height: 100%;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-.metric-card:hover {
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}}
+.metric-card:hover {{
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(0,0,0,.5);
-}
-.metric-label {
-    font-size: 0.68rem; font-weight: 600; letter-spacing: 0.1em;
-    text-transform: uppercase; color: #636366; margin-bottom: 0.6rem;
-}
-.metric-value {
-    font-size: 1.85rem; font-weight: 700; color: #f5f5f7;
-    letter-spacing: -0.03em; line-height: 1.1;
-}
-.metric-sub { font-size: 0.78rem; color: #636366; margin-top: 0.4rem; }
+    box-shadow: 0 4px 20px rgba(124,58,237,.1);
+    border-color: {MIA_PURPLE_MID};
+}}
+.metric-label {{
+    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
+    text-transform: uppercase; color: {MIA_PURPLE}; margin-bottom: 0.5rem;
+}}
+.metric-value {{
+    font-size: 1.85rem; font-weight: 800; color: {MIA_TEXT};
+    letter-spacing: -0.04em; line-height: 1.1;
+}}
+.metric-sub {{ font-size: 0.78rem; color: {MIA_MUTED}; margin-top: 0.4rem; }}
 
-/* ── Badge ── */
-.badge {
+/* ── Badges ── */
+.badge {{
     display: inline-block; padding: 3px 10px; border-radius: 20px;
     font-size: 0.72rem; font-weight: 600; letter-spacing: 0.02em;
-    margin-top: 0.6rem;
-}
-.badge-green  { background: rgba(48,209,88,.15);  color: #30d158; }
-.badge-red    { background: rgba(255,69,58,.15);   color: #ff453a; }
-.badge-blue   { background: rgba(10,132,255,.15);  color: #0a84ff; }
-.badge-amber  { background: rgba(255,159,10,.15);  color: #ff9f0a; }
+    margin-top: 0.5rem;
+}}
+.badge-purple {{ background: {MIA_PURPLE_SOFT}; color: {MIA_PURPLE}; }}
+.badge-green  {{ background: #D1FAE5; color: {MIA_GREEN}; }}
+.badge-red    {{ background: #FEE2E2; color: {MIA_RED}; }}
+.badge-blue   {{ background: #DBEAFE; color: {MIA_BLUE}; }}
+.badge-amber  {{ background: #FEF3C7; color: {MIA_AMBER}; }}
 
-/* ── Header bar ── */
-.lana-header {
+/* ── Header ── */
+.mia-header {{
     display: flex; align-items: center; justify-content: space-between;
-    padding: 1rem 2rem;
-    background: rgba(28,28,30,0.85);
+    padding: 0.85rem 2rem;
+    background: rgba(255,255,255,0.88);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border-bottom: 1px solid #2c2c2e;
+    border-bottom: 1px solid {MIA_BORDER};
     position: sticky; top: 0; z-index: 999;
     margin: -3rem -4rem 2rem -4rem;
-}
-.lana-header-logo {
-    font-size: 1.15rem; font-weight: 700; color: #f5f5f7; letter-spacing: -0.02em;
-}
-.lana-header-meta {
-    font-size: 0.8rem; color: #636366; text-align: right; line-height: 1.5;
-}
-.lana-header-meta strong { color: #ebebf5; font-weight: 600; }
+}}
+.mia-header-logo {{
+    font-size: 1.1rem; font-weight: 800; color: {MIA_TEXT}; letter-spacing: -0.03em;
+}}
+.mia-header-logo span {{ color: {MIA_PURPLE}; }}
+.mia-header-meta {{
+    font-size: 0.8rem; color: {MIA_MUTED}; text-align: right; line-height: 1.5;
+}}
+.mia-header-meta strong {{ color: {MIA_TEXT}; font-weight: 600; }}
 
 /* ── Tabs ── */
-[data-testid="stTabs"] > div:first-child {
+[data-testid="stTabs"] > div:first-child {{
     background: transparent !important;
-    border-bottom: 1px solid #2c2c2e !important;
+    border-bottom: 1px solid {MIA_BORDER} !important;
     gap: 0 !important;
     margin-bottom: 1.5rem !important;
     padding: 0 !important;
-}
-[data-testid="stTabs"] button {
+}}
+[data-testid="stTabs"] button {{
     font-family: 'Inter', sans-serif !important;
     font-size: 0.88rem !important;
     font-weight: 500 !important;
-    color: #636366 !important;
+    color: {MIA_MUTED} !important;
     padding: 0.6rem 1.1rem !important;
     border: none !important;
     border-bottom: 2px solid transparent !important;
     background: transparent !important;
     border-radius: 0 !important;
     transition: color .15s, border-color .15s !important;
-}
-[data-testid="stTabs"] button:hover { color: #f5f5f7 !important; }
-[data-testid="stTabs"] button[aria-selected="true"] {
-    color: #f5f5f7 !important;
-    font-weight: 600 !important;
-    border-bottom: 2px solid #0a84ff !important;
-}
-[data-testid="stTabs"] [data-baseweb="tab-highlight"] { display: none !important; }
+}}
+[data-testid="stTabs"] button:hover {{ color: {MIA_TEXT} !important; }}
+[data-testid="stTabs"] button[aria-selected="true"] {{
+    color: {MIA_PURPLE} !important;
+    font-weight: 700 !important;
+    border-bottom: 2px solid {MIA_PURPLE} !important;
+}}
+[data-testid="stTabs"] [data-baseweb="tab-highlight"] {{ display: none !important; }}
 
-/* ── Inputs dark ── */
+/* ── Inputs ── */
 .stTextInput > div > div > input,
 .stNumberInput > div > div > input,
-.stDateInput > div > div > input {
-    background: #2c2c2e !important;
-    border: 1px solid #3a3a3c !important;
+.stDateInput > div > div > input {{
+    background: {MIA_SURFACE} !important;
+    border: 1.5px solid {MIA_BORDER} !important;
     border-radius: 10px !important;
-    color: #f5f5f7 !important;
+    color: {MIA_TEXT} !important;
     font-family: 'Inter', sans-serif !important;
     font-size: 0.9rem !important;
     padding: 0.55rem 0.85rem !important;
-    box-shadow: none !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04) !important;
     transition: border-color .15s, box-shadow .15s !important;
-}
+}}
 .stTextInput > div > div > input:focus,
-.stNumberInput > div > div > input:focus {
-    border-color: #0a84ff !important;
-    box-shadow: 0 0 0 3px rgba(10,132,255,.2) !important;
+.stNumberInput > div > div > input:focus {{
+    border-color: {MIA_PURPLE} !important;
+    box-shadow: 0 0 0 3px {MIA_PURPLE_SOFT} !important;
     outline: none !important;
-}
-.stTextInput > div > div > input::placeholder { color: #48484a !important; }
+}}
+.stTextInput > div > div > input::placeholder {{ color: {MIA_FAINT} !important; }}
 .stTextInput label, .stNumberInput label,
 .stSelectbox label, .stDateInput label,
 .stFileUploader label, .stTextArea label,
-.stSlider label {
-    color: #8e8e93 !important; font-size: 0.78rem !important;
-    font-weight: 500 !important; letter-spacing: 0.03em !important;
-}
+.stSlider label {{
+    color: {MIA_MUTED} !important; font-size: 0.78rem !important;
+    font-weight: 600 !important; letter-spacing: 0.03em !important;
+}}
 
-/* Selectbox dark */
-.stSelectbox > div > div {
-    background: #2c2c2e !important;
-    border: 1px solid #3a3a3c !important;
+/* Selectbox */
+.stSelectbox > div > div {{
+    background: {MIA_SURFACE} !important;
+    border: 1.5px solid {MIA_BORDER} !important;
     border-radius: 10px !important;
-    color: #f5f5f7 !important;
-}
-.stSelectbox > div > div > div { color: #f5f5f7 !important; }
+    color: {MIA_TEXT} !important;
+}}
+.stSelectbox > div > div > div {{ color: {MIA_TEXT} !important; }}
 
-/* Password field */
-.stTextInput [type="password"] { letter-spacing: 0.15em !important; }
-
-/* File uploader dark */
-[data-testid="stFileUploader"] {
-    border: 1.5px dashed #3a3a3c !important;
+/* File uploader */
+[data-testid="stFileUploader"] {{
+    border: 1.5px dashed {MIA_PURPLE_MID} !important;
     border-radius: 14px !important;
-    background: #1c1c1e !important;
+    background: {MIA_PURPLE_SOFT} !important;
     padding: 1.2rem !important;
-    color: #8e8e93 !important;
+    color: {MIA_MUTED} !important;
     transition: border-color 0.2s ease !important;
-}
-[data-testid="stFileUploader"]:hover {
-    border-color: #0a84ff !important;
-}
+}}
+[data-testid="stFileUploader"]:hover {{
+    border-color: {MIA_PURPLE} !important;
+    background: {MIA_PURPLE_MID} !important;
+}}
 
-/* Buttons dark */
-.stButton > button {
+/* Buttons */
+.stButton > button {{
     border-radius: 10px !important;
-    border: 1px solid #3a3a3c !important;
-    background: #2c2c2e !important;
-    color: #f5f5f7 !important;
+    border: 1.5px solid {MIA_BORDER} !important;
+    background: {MIA_SURFACE} !important;
+    color: {MIA_TEXT} !important;
     font-family: 'Inter', sans-serif !important;
     font-size: 0.88rem !important;
-    font-weight: 500 !important;
+    font-weight: 600 !important;
     padding: 0.55rem 1.3rem !important;
-    box-shadow: 0 1px 4px rgba(0,0,0,.3) !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08) !important;
     transition: all .15s ease !important;
-}
-.stButton > button:hover {
-    background: #3a3a3c !important;
-    border-color: #48484a !important;
-    box-shadow: 0 2px 8px rgba(0,0,0,.4) !important;
+}}
+.stButton > button:hover {{
+    background: {MIA_BG} !important;
+    border-color: {MIA_PURPLE_MID} !important;
+    box-shadow: 0 2px 8px rgba(124,58,237,.12) !important;
     transform: translateY(-1px) !important;
-}
-.stButton > button[kind="primary"] {
-    background: #0a84ff !important;
+}}
+.stButton > button[kind="primary"] {{
+    background: {MIA_PURPLE} !important;
     color: #ffffff !important;
-    border-color: #0a84ff !important;
-    box-shadow: 0 2px 8px rgba(10,132,255,.4) !important;
-}
-.stButton > button[kind="primary"]:hover {
-    background: #0077ed !important;
-    border-color: #0077ed !important;
-    box-shadow: 0 4px 14px rgba(10,132,255,.5) !important;
+    border-color: {MIA_PURPLE} !important;
+    box-shadow: 0 2px 8px rgba(124,58,237,.35) !important;
+}}
+.stButton > button[kind="primary"]:hover {{
+    background: #6D28D9 !important;
+    border-color: #6D28D9 !important;
+    box-shadow: 0 4px 14px rgba(124,58,237,.45) !important;
     transform: translateY(-1px) !important;
-}
+}}
 
-/* Slider dark */
-.stSlider > div > div > div > div {
-    background: #0a84ff !important;
-}
-.stSlider [data-baseweb="slider"] [data-testid="stSliderTrack"] {
-    background: #3a3a3c !important;
-}
+/* Slider */
+.stSlider > div > div > div > div {{ background: {MIA_PURPLE} !important; }}
+.stSlider [data-baseweb="slider"] [data-testid="stSliderTrack"] {{
+    background: {MIA_PURPLE_MID} !important;
+}}
 
-/* Alerts dark */
-.stSuccess { background: rgba(48,209,88,.12) !important; color: #30d158 !important; border-color: rgba(48,209,88,.3) !important; border-radius: 10px !important; }
-.stWarning { background: rgba(255,159,10,.12) !important; color: #ff9f0a !important; border-color: rgba(255,159,10,.3) !important; border-radius: 10px !important; }
-.stError   { background: rgba(255,69,58,.12) !important;  color: #ff453a !important; border-color: rgba(255,69,58,.3) !important;  border-radius: 10px !important; }
-.stInfo    { background: rgba(10,132,255,.12) !important; color: #0a84ff !important; border-color: rgba(10,132,255,.3) !important;  border-radius: 10px !important; }
+/* Alerts */
+.stSuccess {{ background: #D1FAE5 !important; color: {MIA_GREEN} !important; border-color: #A7F3D0 !important; border-radius: 10px !important; }}
+.stWarning {{ background: #FEF3C7 !important; color: {MIA_AMBER} !important; border-color: #FDE68A !important; border-radius: 10px !important; }}
+.stError   {{ background: #FEE2E2 !important; color: {MIA_RED} !important; border-color: #FECACA !important; border-radius: 10px !important; }}
+.stInfo    {{ background: {MIA_PURPLE_SOFT} !important; color: {MIA_PURPLE} !important; border-color: {MIA_PURPLE_MID} !important; border-radius: 10px !important; }}
 
-/* Dataframe dark */
-[data-testid="stDataFrame"] {
+/* Dataframe */
+[data-testid="stDataFrame"] {{
     border-radius: 12px !important;
     overflow: hidden !important;
-    border: 1px solid #2c2c2e !important;
-}
-[data-testid="stDataFrame"] table {
-    background: #1c1c1e !important;
-    color: #f5f5f7 !important;
-}
+    border: 1px solid {MIA_BORDER} !important;
+}}
+[data-testid="stDataFrame"] table {{ background: {MIA_SURFACE} !important; color: {MIA_TEXT} !important; }}
 
 /* Spinner */
-.stSpinner > div { border-top-color: #0a84ff !important; }
+.stSpinner > div {{ border-top-color: {MIA_PURPLE} !important; }}
 
-/* Login page dark */
-.login-wrap {
-    max-width: 420px; margin: 5vh auto 0; padding: 2.5rem;
-    background: #1c1c1e; border: 1px solid #2c2c2e;
-    border-radius: 20px; box-shadow: 0 8px 32px rgba(0,0,0,.6);
-}
-.login-logo {
-    font-size: 1.5rem; font-weight: 700; letter-spacing: -0.03em;
-    color: #f5f5f7; text-align: center; margin-bottom: 0.25rem;
-}
-.login-tagline {
-    font-size: 0.82rem; color: #636366; text-align: center; margin-bottom: 2rem;
-}
+/* Login */
+.login-wrap {{
+    max-width: 420px; margin: 6vh auto 0; padding: 2.5rem;
+    background: {MIA_SURFACE}; border: 1px solid {MIA_BORDER};
+    border-radius: 20px; box-shadow: 0 8px 40px rgba(124,58,237,.12);
+}}
+.login-logo {{
+    font-size: 1.6rem; font-weight: 800; letter-spacing: -0.04em;
+    color: {MIA_TEXT}; text-align: center; margin-bottom: 0.2rem;
+}}
+.login-logo span {{ color: {MIA_PURPLE}; }}
+.login-tagline {{
+    font-size: 0.82rem; color: {MIA_MUTED}; text-align: center; margin-bottom: 2rem;
+}}
 
 /* Cascadă row */
-.casc-row {
+.casc-row {{
     display: flex; justify-content: space-between; align-items: center;
-    padding: 0.55rem 0; border-bottom: 1px solid #2c2c2e;
-}
-.casc-label { font-size: 0.88rem; color: #8e8e93; }
-.casc-val   { font-size: 0.88rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+    padding: 0.55rem 0; border-bottom: 1px solid #F3F4F6;
+}}
+.casc-label {{ font-size: 0.88rem; color: {MIA_MUTED}; }}
+.casc-val   {{ font-size: 0.88rem; font-weight: 600; font-variant-numeric: tabular-nums; }}
 
-/* Bon fiscal dark */
-.bon-wrap {
-    background: #1c1c1e; border: 1px solid #2c2c2e; border-radius: 16px;
-    padding: 1.8rem; max-width: 400px; box-shadow: 0 4px 16px rgba(0,0,0,.4);
-}
-.bon-title {
-    font-size: 0.65rem; font-weight: 700; letter-spacing: 0.18em;
-    text-transform: uppercase; color: #636366; text-align: center;
+/* Bon fiscal */
+.bon-wrap {{
+    background: {MIA_SURFACE}; border: 1px solid {MIA_BORDER}; border-radius: 16px;
+    padding: 1.8rem; max-width: 400px;
+    box-shadow: 0 2px 12px rgba(124,58,237,.08);
+}}
+.bon-title {{
+    font-size: 0.65rem; font-weight: 800; letter-spacing: 0.18em;
+    text-transform: uppercase; color: {MIA_PURPLE}; text-align: center;
     margin-bottom: 0.3rem;
-}
-.bon-date  { font-size: 0.72rem; color: #48484a; text-align: center; margin-bottom: 1.2rem; }
-.bon-sep   { border: none; border-top: 1px dashed #2c2c2e; margin: 0.8rem 0; }
-.bon-line  {
+}}
+.bon-date  {{ font-size: 0.72rem; color: {MIA_FAINT}; text-align: center; margin-bottom: 1.2rem; }}
+.bon-sep   {{ border: none; border-top: 1px dashed {MIA_BORDER}; margin: 0.8rem 0; }}
+.bon-line  {{
     display: flex; justify-content: space-between;
     padding: 0.28rem 0; font-size: 0.86rem;
-}
-.bon-net   {
+}}
+.bon-net   {{
     display: flex; justify-content: space-between; align-items: center; padding-top: 0.8rem;
-}
-.bon-net-label { font-size: 0.95rem; font-weight: 700; color: #f5f5f7; }
-.bon-net-val   { font-size: 1.5rem; font-weight: 700; }
+}}
+.bon-net-label {{ font-size: 0.95rem; font-weight: 700; color: {MIA_TEXT}; }}
+.bon-net-val   {{ font-size: 1.5rem; font-weight: 800; }}
 
-/* ── Subtab selector (Scanare / Manual) ── */
-.sub-tab-bar {
-    display: flex; gap: 0.5rem; margin-bottom: 1.5rem;
-}
-.sub-tab {
-    padding: 0.45rem 1.1rem; border-radius: 8px; font-size: 0.85rem;
-    font-weight: 500; cursor: pointer; border: 1px solid #3a3a3c;
-    background: #2c2c2e; color: #8e8e93;
-    transition: all 0.15s ease;
-    display: inline-block;
-}
-.sub-tab.active {
-    background: #0a84ff; color: #fff; border-color: #0a84ff;
-    box-shadow: 0 2px 8px rgba(10,132,255,.35);
-}
+/* Match row (Z) */
+.match-badge-ok  {{ background: #D1FAE5; color: {MIA_GREEN}; padding: 2px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; }}
+.match-badge-err {{ background: #FEE2E2; color: {MIA_RED};   padding: 2px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; }}
 
-/* ── OCR scan card ── */
-.scan-zone {
-    border: 1.5px dashed #3a3a3c;
-    border-radius: 16px;
-    background: #1c1c1e;
-    padding: 2rem;
-    text-align: center;
-    transition: border-color 0.2s ease;
-}
-.scan-zone:hover { border-color: #0a84ff; }
+/* Stoc alert */
+.stoc-low {{
+    background: #FEF3C7; border: 1px solid #FDE68A;
+    border-radius: 10px; padding: 0.7rem 1rem;
+    font-size: 0.85rem; color: {MIA_AMBER}; font-weight: 500;
+    margin-bottom: 0.4rem;
+}}
+.stoc-ok {{
+    background: #D1FAE5; border: 1px solid #A7F3D0;
+    border-radius: 10px; padding: 0.7rem 1rem;
+    font-size: 0.85rem; color: {MIA_GREEN}; font-weight: 500;
+    margin-bottom: 0.4rem;
+}}
 
-/* ── Match row (confirmare) ── */
-.match-row {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0.6rem 0; border-bottom: 1px solid #2c2c2e; gap: 0.5rem;
-}
-.match-name { font-size: 0.88rem; color: #f5f5f7; font-weight: 500; flex: 2; }
-.match-ai   { font-size: 0.78rem; color: #636366; flex: 1.5; }
-.match-badge-ok  { background: rgba(48,209,88,.15); color: #30d158; padding: 2px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 600; }
-.match-badge-err { background: rgba(255,159,10,.15); color: #ff9f0a; padding: 2px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 600; }
-
-/* Streamlit number input no spin */
-.stNumberInput button { background: #2c2c2e !important; border-color: #3a3a3c !important; color: #f5f5f7 !important; }
+/* Progress bar stoc */
+.stoc-bar-wrap {{
+    background: #F3F4F6; border-radius: 4px; height: 6px; margin-top: 6px; overflow: hidden;
+}}
+.stoc-bar-fill {{
+    height: 6px; border-radius: 4px; transition: width 0.4s ease;
+}}
 </style>
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # AUTENTIFICARE
 # ─────────────────────────────────────────────────────────────────────────────
-CREDENTIALE = {"serban": "lana"}
-RESTAURANT   = "Restaurantul Meu SRL"
-PLAN_ACTIV   = "Lana Advisory"
+if "auth_ok" not in st.session_state:
+    st.session_state.auth_ok = False
 
-def pagina_login():
-    st.markdown("""
+if not st.session_state.auth_ok:
+    st.markdown(f"""
     <div class="login-wrap animate-in">
-        <div class="login-logo">◈ Lana</div>
-        <div class="login-tagline">Platforma ta de management financiar</div>
+        <div class="login-logo">M<span>IA</span></div>
+        <div class="login-tagline">Restaurant Intelligence · powered by AI</div>
     </div>
     """, unsafe_allow_html=True)
-    col_l, col_c, col_r = st.columns([1, 1.4, 1])
-    with col_c:
-        st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
-        user   = st.text_input("Utilizator", placeholder="serban")
-        parola = st.text_input("Parolă", type="password", placeholder="••••••")
-        st.markdown("<div style='height:0.25rem;'></div>", unsafe_allow_html=True)
-        if st.button("Autentificare →", type="primary", use_container_width=True):
-            if CREDENTIALE.get(user) == parola:
-                st.session_state["autentificat"] = True
-                st.session_state["utilizator"]   = user
+    col_l, col_m, col_r = st.columns([1, 1.2, 1])
+    with col_m:
+        u = st.text_input("Utilizator", placeholder="username")
+        p = st.text_input("Parolă", type="password", placeholder="••••••")
+        if st.button("Intră în MIA →", type="primary", use_container_width=True):
+            if u == "serban" and p == "mia":
+                st.session_state.auth_ok = True
                 st.rerun()
             else:
-                st.error("Credențiale incorecte. Încearcă din nou.")
-
-if "autentificat" not in st.session_state:
-    st.session_state["autentificat"] = False
-if not st.session_state["autentificat"]:
-    pagina_login()
+                st.error("Date incorecte. Încearcă din nou.")
     st.stop()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # HEADER
 # ─────────────────────────────────────────────────────────────────────────────
 st.markdown(f"""
-<div class="lana-header">
-    <div style="display:flex;align-items:center;gap:0.75rem;">
-        <span style="font-size:1.3rem;font-weight:700;color:#f5f5f7;letter-spacing:-0.02em;">◈ Lana</span>
-        <span style="font-size:0.75rem;font-weight:500;color:#636366;padding:2px 10px;
-            border:1px solid #2c2c2e;border-radius:20px;">Advisory</span>
-    </div>
-    <div class="lana-header-meta">
-        <strong>{RESTAURANT}</strong><br>
-        <span style="color:#0a84ff;font-weight:500;">{PLAN_ACTIV}</span>
+<div class="mia-header">
+    <div class="mia-header-logo">M<span>IA</span> · Restaurant Intelligence</div>
+    <div class="mia-header-meta">
+        <strong>{datetime.now().strftime("%d %b %Y · %H:%M")}</strong><br>
+        Bun venit, serban
     </div>
 </div>
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# BACKEND — JWT / GOOGLE SHEETS (pure Python RSA, zero extra deps)
+# RSA / JWT helpers (identic cu Lana)
 # ─────────────────────────────────────────────────────────────────────────────
-def _parse_asn1_len(d, p):
-    b = d[p]; p += 1
-    if b < 0x80: return b, p
-    n = b & 0x7f
-    return int.from_bytes(d[p:p+n], 'big'), p + n
-
-def _parse_asn1_int(d, p):
-    assert d[p] == 0x02, f"ASN.1 INT expected at {p}"
-    p += 1; ln, p = _parse_asn1_len(d, p)
-    return int.from_bytes(d[p:p+ln], 'big'), p + ln
-
-def _parse_pkcs1(data):
-    p = 0
-    assert data[p] == 0x30; p += 1
-    _, p = _parse_asn1_len(data, p)
-    _, p = _parse_asn1_int(data, p)
-    n, p = _parse_asn1_int(data, p)
-    _, p = _parse_asn1_int(data, p)
-    d, p = _parse_asn1_int(data, p)
-    return n, d
-
 def _load_rsa_key(pem: str):
-    lines = pem.strip().splitlines()
-    b64   = ''.join(l for l in lines if not l.startswith('---'))
-    der   = base64.b64decode(b64)
-    if b'RSA PRIVATE' in pem.encode():
-        return _parse_pkcs1(der)
-    p = 0
-    assert der[p] == 0x30; p += 1
-    _, p = _parse_asn1_len(der, p)
-    _, p = _parse_asn1_int(der, p)
-    assert der[p] == 0x30; p += 1
-    aln, p = _parse_asn1_len(der, p); p += aln
-    assert der[p] == 0x04; p += 1
-    olen, p = _parse_asn1_len(der, p)
-    return _parse_pkcs1(der[p:p+olen])
+    pem = pem.strip()
+    lines = [l for l in pem.split('\n') if not l.startswith('-----')]
+    der   = base64.b64decode(''.join(lines))
+    from cryptography.hazmat.primitives.serialization import load_der_private_key
+    key   = load_der_private_key(der, password=None)
+    priv  = key.private_numbers()
+    return priv.public_numbers.n, priv.d
 
-_SHA256_DER = bytes([
-    0x30,0x31,0x30,0x0d,0x06,0x09,0x60,0x86,0x48,0x01,0x65,0x03,0x04,
-    0x02,0x01,0x05,0x00,0x04,0x20
-])
+def _rsa_sign(msg: bytes, n: int, d: int) -> bytes:
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import padding
+    from cryptography.hazmat.primitives.serialization import load_der_private_key
+    sa  = dict(st.secrets["gcp_service_account"])
+    pem = sa["private_key"].strip()
+    lines = [l for l in pem.split('\n') if not l.startswith('-----')]
+    der   = base64.b64decode(''.join(lines))
+    key   = load_der_private_key(der, password=None)
+    return key.sign(msg, padding.PKCS1v15(), hashes.SHA256())
 
-def _rsa_sign(message: bytes, n: int, d: int) -> bytes:
-    import hashlib
-    k  = (n.bit_length() + 7) // 8
-    t  = _SHA256_DER + hashlib.sha256(message).digest()
-    ps = b'\xff' * (k - len(t) - 3)
-    em = b'\x00\x01' + ps + b'\x00' + t
-    s  = pow(int.from_bytes(em, 'big'), d, n)
-    return s.to_bytes(k, 'big')
+def b64u(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b'=').decode()
 
 def _make_jwt(sa: dict) -> str:
-    def b64u(x): return base64.urlsafe_b64encode(x).rstrip(b'=').decode()
     now = int(time.time())
     hdr = b64u(json.dumps({"alg":"RS256","typ":"JWT"}, separators=(',',':')).encode())
     pld = b64u(json.dumps({
@@ -506,8 +460,7 @@ def _make_jwt(sa: dict) -> str:
         "iat": now, "exp": now + 3600,
     }, separators=(',',':')).encode())
     msg = f"{hdr}.{pld}".encode()
-    n, d = _load_rsa_key(sa["private_key"])
-    return f"{hdr}.{pld}.{b64u(_rsa_sign(msg, n, d))}"
+    return f"{hdr}.{pld}.{b64u(_rsa_sign(msg, *_load_rsa_key(sa['private_key'])))}"
 
 @st.cache_resource(ttl=3000)
 def get_access_token() -> str:
@@ -524,7 +477,9 @@ def get_access_token() -> str:
     with urllib.request.urlopen(req) as r:
         return json.loads(r.read())["access_token"]
 
-# ── Helpers Sheets ──────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# GOOGLE SHEETS helpers
+# ─────────────────────────────────────────────────────────────────────────────
 def sheets_get(rng: str) -> list:
     token = get_access_token()
     sid   = st.secrets["spreadsheet_id"]
@@ -569,7 +524,9 @@ def sheets_append(sheet: str, rows: list):
     try: urllib.request.urlopen(req)
     except Exception as e: st.error(f"Eroare append: {e}")
 
-# ── CRUD Sheets ──────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# CRUD — Sheet → DataFrame
+# ─────────────────────────────────────────────────────────────────────────────
 def _sheet_to_df(sheet: str, cols: list) -> pd.DataFrame:
     rows = sheets_get(sheet)
     if len(rows) <= 1:
@@ -594,15 +551,17 @@ def salveaza_config(cfg: dict):
     sheets_clear_write("Config", [["Cheie","Valoare"]] + [[k,str(v)] for k,v in cfg.items()])
     st.cache_resource.clear()
 
-def citeste_stoc()    -> pd.DataFrame:
-    return _sheet_to_df("Stoc",    ["Produs","Cantitate","Unitate","Pret_Unitar","Data"])
+def citeste_stoc() -> pd.DataFrame:
+    return _sheet_to_df("Stoc", ["Produs","Cantitate","Unitate","Pret_Unitar","Data","Stoc_Minim"])
 
 def salveaza_stoc(df: pd.DataFrame):
-    rows = [["Produs","Cantitate","Unitate","Pret_Unitar","Data"]]
+    rows = [["Produs","Cantitate","Unitate","Pret_Unitar","Data","Stoc_Minim"]]
     for _, r in df.iterrows():
-        rows.append([str(r.get("Produs","")), str(r.get("Cantitate",0)),
-                     str(r.get("Unitate","")), str(r.get("Pret_Unitar",0)),
-                     str(r.get("Data",""))])
+        rows.append([
+            str(r.get("Produs","")), str(r.get("Cantitate",0)),
+            str(r.get("Unitate","")), str(r.get("Pret_Unitar",0)),
+            str(r.get("Data","")),    str(r.get("Stoc_Minim",0)),
+        ])
     sheets_clear_write("Stoc", rows)
 
 def citeste_vanzari() -> pd.DataFrame:
@@ -614,6 +573,12 @@ def salveaza_vanzari(rows_data: list):
 
 def citeste_retetar() -> pd.DataFrame:
     return _sheet_to_df("Retetar", ["Preparat","Ingredient","Gramaj","Pret_Vanzare"])
+
+def citeste_facturi_log() -> pd.DataFrame:
+    return _sheet_to_df("FacturiLog", ["Data","Furnizor","NrFactura","Total","Produse"])
+
+def salveaza_factura_log(data: str, furnizor: str, nr: str, total: float, produse_json: str):
+    sheets_append("FacturiLog", [[data, furnizor, nr, str(total), produse_json]])
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LOGICĂ FINANCIARĂ
@@ -672,10 +637,9 @@ def cascada(vanzari_brute: float, food_cost: float, cfg: dict) -> dict:
     }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FUZZY MATCHING — simplu, fără dependențe externe
+# FUZZY MATCHING
 # ─────────────────────────────────────────────────────────────────────────────
 def _normalize(s: str) -> str:
-    """Normalizează string: lowercase, fără diacritice, fără cifre trailing."""
     import unicodedata
     s = s.lower().strip()
     s = unicodedata.normalize('NFD', s)
@@ -683,46 +647,31 @@ def _normalize(s: str) -> str:
     return s
 
 def _similarity(a: str, b: str) -> float:
-    """Scor similaritate 0-1 bazat pe token overlap + prefix match."""
     a, b = _normalize(a), _normalize(b)
     if a == b: return 1.0
-    # Token overlap
-    ta = set(a.split())
-    tb = set(b.split())
+    ta, tb = set(a.split()), set(b.split())
     if not ta or not tb: return 0.0
     overlap = len(ta & tb) / max(len(ta), len(tb))
-    # Prefix: cel mai lung string e prefix al celuilalt?
     shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
     prefix_bonus = 0.3 if longer.startswith(shorter) else 0.0
     return min(1.0, overlap + prefix_bonus)
 
 def fuzzy_match_preparat(ai_name: str, preparate_list: list, threshold: float = 0.35):
-    """
-    Returnează (best_match_name, score) sau (None, 0) dacă sub threshold.
-    """
     best, best_score = None, 0.0
     for prep in preparate_list:
         sc = _similarity(ai_name, prep)
         if sc > best_score:
             best_score = sc
             best = prep
-    if best_score >= threshold:
-        return best, best_score
-    return None, 0.0
+    return (best, best_score) if best_score >= threshold else (None, 0.0)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # AI — GEMINI 1.5 Flash
 # ─────────────────────────────────────────────────────────────────────────────
-def extrage_factura_ai(img_bytes: bytes) -> dict | None:
+def _gemini_call(img_bytes: bytes, prompt: str) -> dict | None:
     try:
         key    = st.secrets["GEMINI_API_KEY"]
         b64img = base64.b64encode(img_bytes).decode()
-        prompt = (
-            "Ești un sistem de extragere date din facturi fiscale românești. "
-            "Analizează imaginea și extrage TOATE produsele. "
-            "Returnează EXCLUSIV JSON valid, fără text extra, fără markdown, fără backticks. "
-            'Format: {"produse":[{"produs":"Nume","cantitate":2.0,"unitate":"kg","pret_unitar":15.0}]}'
-        )
         payload = json.dumps({"contents": [{"parts": [
             {"inline_data": {"mime_type": "image/jpeg", "data": b64img}},
             {"text": prompt},
@@ -742,44 +691,91 @@ def extrage_factura_ai(img_bytes: bytes) -> dict | None:
     except Exception as e:
         st.error(f"Eroare AI: {e}"); return None
 
+def extrage_factura_ai(img_bytes: bytes) -> dict | None:
+    prompt = (
+        "Ești un sistem specializat în extragerea datelor din facturi fiscale românești. "
+        "Analizează imaginea și extrage: furnizorul (numele firmei), numărul facturii, "
+        "data facturii și TOATE produsele cu cantitate, unitate de măsură și preț unitar. "
+        "Returnează EXCLUSIV JSON valid, fără text extra, fără markdown. "
+        'Format: {"furnizor":"Firma SRL","nr_factura":"F001","data":"2024-01-15",'
+        '"total":150.0,"produse":[{"produs":"Făină","cantitate":50.0,"unitate":"kg","pret_unitar":2.5}]}'
+    )
+    return _gemini_call(img_bytes, prompt)
+
 def extrage_raport_z_ai(img_bytes: bytes) -> dict | None:
-    """Extrage produsele vândute din Raportul Z sau bonuri fiscale."""
-    try:
-        key    = st.secrets["GEMINI_API_KEY"]
-        b64img = base64.b64encode(img_bytes).decode()
-        prompt = (
-            "Ești un sistem OCR specializat pentru bonuri fiscale și Rapoarte Z din restaurante românești. "
-            "Analizează imaginea și extrage TOATE produsele/preparatele vândute cu cantitățile lor. "
-            "Ignoră taxe, subtotaluri, TVA, totaluri — extrage doar produsele individuale. "
-            "Returnează EXCLUSIV JSON valid, fără text extra, fără markdown, fără backticks. "
-            'Format exact: {"vanzari":[{"produs":"Nume preparat","cantitate":5}]} '
-            "Cantitățile trebuie să fie numere întregi sau zecimale. "
-            "Dacă același produs apare de mai multe ori, sumează cantitățile."
-        )
-        payload = json.dumps({"contents": [{"parts": [
-            {"inline_data": {"mime_type": "image/jpeg", "data": b64img}},
-            {"text": prompt},
-        ]}]}).encode()
-        req = urllib.request.Request(
-            f"{GEMINI_BASE}?key={key}", data=payload,
-            headers={"Content-Type": "application/json"}, method="POST"
-        )
-        with urllib.request.urlopen(req) as r:
-            result = json.loads(r.read())
-        raw = result["candidates"][0]["content"]["parts"][0]["text"].strip()
-        raw = raw.replace("```json","").replace("```","").strip()
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        st.error("AI-ul nu a returnat JSON valid. Încearcă cu o imagine mai clară.")
-        return None
-    except Exception as e:
-        st.error(f"Eroare AI: {e}"); return None
+    prompt = (
+        "Ești un sistem OCR specializat pentru bonuri fiscale și Rapoarte Z din restaurante românești. "
+        "Analizează imaginea și extrage TOATE produsele/preparatele vândute cu cantitățile lor. "
+        "Ignoră taxe, subtotaluri, TVA, totaluri — extrage doar produsele individuale. "
+        "Returnează EXCLUSIV JSON valid, fără text extra, fără markdown. "
+        'Format: {"vanzari":[{"produs":"Burger Clasic","cantitate":5}]} '
+        "Cantitățile trebuie să fie numere. Sumează dacă același produs apare de mai multe ori."
+    )
+    return _gemini_call(img_bytes, prompt)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LOGICĂ STOC
+# ─────────────────────────────────────────────────────────────────────────────
+def adauga_in_stoc(produse_list: list):
+    """Adaugă sau actualizează produsele din factură în stoc."""
+    stoc_df = citeste_stoc()
+    for prod in produse_list:
+        nu  = str(prod.get("Produs","")).strip()
+        can = _f(prod.get("Cantitate", 0))
+        un  = str(prod.get("Unitate","")).strip()
+        pr  = _f(prod.get("Pret_Unitar", 0))
+        dat = str(prod.get("Data", date.today().strftime("%Y-%m-%d")))
+        sm  = _f(prod.get("Stoc_Minim", 0))
+        if not nu: continue
+        mask = stoc_df["Produs"].str.lower().str.strip() == nu.lower().strip() if not stoc_df.empty else pd.Series([], dtype=bool)
+        if not stoc_df.empty and mask.any():
+            idx2 = stoc_df[mask].index[0]
+            # Adaugă cantitatea (nu înlocui) + actualizează prețul
+            stoc_df.at[idx2, "Cantitate"]   = round(_f(stoc_df.at[idx2, "Cantitate"]) + can, 4)
+            stoc_df.at[idx2, "Pret_Unitar"] = pr
+            stoc_df.at[idx2, "Data"]        = dat
+        else:
+            new_row = {"Produs": nu, "Cantitate": can, "Unitate": un,
+                       "Pret_Unitar": pr, "Data": dat, "Stoc_Minim": sm}
+            stoc_df = pd.concat([stoc_df, pd.DataFrame([new_row])], ignore_index=True)
+    salveaza_stoc(stoc_df)
+    return stoc_df
+
+def scade_stoc_din_vanzari(vanzari_input: list, retetar_df: pd.DataFrame):
+    """Scade ingredientele din stoc pe baza rețetarului + vânzări din Z."""
+    stoc_df = citeste_stoc()
+    if retetar_df.empty or stoc_df.empty:
+        return stoc_df, []
+    scazut = []
+    for v in vanzari_input:
+        prep_v = str(v["Preparat"]).lower().strip()
+        cant_v = _f(v["Cantitate_Vanduta"])
+        ings   = retetar_df[retetar_df["Preparat"].str.lower().str.strip() == prep_v]
+        for _, irow in ings.iterrows():
+            ing    = str(irow.get("Ingredient","")).lower().strip()
+            gramaj = _f(irow.get("Gramaj",0)) / 1000.0
+            consum = cant_v * gramaj
+            mask   = stoc_df["Produs"].str.lower().str.strip() == ing
+            if mask.any():
+                idx3 = stoc_df[mask].index[0]
+                cur  = _f(stoc_df.at[idx3,"Cantitate"])
+                nou  = max(0, round(cur - consum, 4))
+                stoc_df.at[idx3,"Cantitate"] = nou
+                scazut.append({
+                    "ingredient": stoc_df.at[idx3,"Produs"],
+                    "inainte": cur, "dupa": nou, "consum": round(consum, 4),
+                    "unitate": stoc_df.at[idx3,"Unitate"],
+                    "minim": _f(stoc_df.at[idx3,"Stoc_Minim"]),
+                })
+    return stoc_df, scazut
 
 # ─────────────────────────────────────────────────────────────────────────────
 # COMPONENTE UI
 # ─────────────────────────────────────────────────────────────────────────────
-def card_metric(titlu: str, valoare: str, sub: str = "", badge: str = "", tip: str = "blue"):
-    cls = {"green":"badge-green","red":"badge-red","blue":"badge-blue","amber":"badge-amber"}.get(tip,"badge-blue")
+def card_metric(titlu: str, valoare: str, sub: str = "", badge: str = "", tip: str = "purple"):
+    cls_map = {"purple":"badge-purple","green":"badge-green","red":"badge-red",
+               "blue":"badge-blue","amber":"badge-amber"}
+    cls = cls_map.get(tip, "badge-purple")
     badge_html = f'<div><span class="badge {cls}">{badge}</span></div>' if badge else ""
     sub_html   = f'<div class="metric-sub">{sub}</div>' if sub else ""
     st.markdown(f"""
@@ -790,7 +786,7 @@ def card_metric(titlu: str, valoare: str, sub: str = "", badge: str = "", tip: s
     </div>""", unsafe_allow_html=True)
 
 def casc_row(label: str, valoare: float, plus: bool = False):
-    color = "#30d158" if plus else "#ff453a" if valoare > 0 else "#48484a"
+    color = MIA_GREEN if plus else (MIA_RED if valoare > 0 else MIA_FAINT)
     sign  = "+" if plus else "−"
     st.markdown(f"""
     <div class="casc-row">
@@ -800,20 +796,21 @@ def casc_row(label: str, valoare: float, plus: bool = False):
 
 def bon_fiscal(d: dict, titlu: str = "BON FISCAL"):
     net = d["profit_net_real"]
-    nc  = "#30d158" if net >= 0 else "#ff453a"
+    nc  = MIA_GREEN if net >= 0 else MIA_RED
     linii = [
-        ("Încasări brute", "#f5f5f7",  f"{d['vanzari_brute']:,.2f} RON"),
-        ("TVA colectat",   "#ff453a",  f"− {d['tva_colectat']:,.2f} RON"),
-        ("Food Cost",      "#ff453a",  f"− {d['food_cost']:,.2f} RON"),
-        ("Cheltuieli fixe","#ff453a",  f"− {d['cheltuieli_fixe_zilnice']:,.2f} RON"),
-        ("Impozit firmă",  "#ff453a",  f"− {d['impozit_firma']:,.2f} RON"),
-        ("Impozit div.",   "#ff453a",  f"− {d['impozit_dividend']:,.2f} RON"),
+        ("Încasări brute",  MIA_TEXT,  f"{d['vanzari_brute']:,.2f} RON"),
+        ("TVA colectat",    MIA_RED,   f"− {d['tva_colectat']:,.2f} RON"),
+        ("Food Cost",       MIA_RED,   f"− {d['food_cost']:,.2f} RON"),
+        ("Cheltuieli fixe", MIA_RED,   f"− {d['cheltuieli_fixe_zilnice']:,.2f} RON"),
+        ("Impozit firmă",   MIA_RED,   f"− {d['impozit_firma']:,.2f} RON"),
+        ("Impozit div.",    MIA_RED,   f"− {d['impozit_dividend']:,.2f} RON"),
     ]
     rows_html = "".join(
-        f'<div class="bon-line"><span style="color:#8e8e93;">{l}</span>'
+        f'<div class="bon-line"><span style="color:{MIA_MUTED};">{l}</span>'
         f'<span style="color:{c};">{v}</span></div>'
         for l, c, v in linii
     )
+    badge_cls = "badge-green" if net >= 0 else "badge-red"
     st.markdown(f"""
     <div class="bon-wrap animate-in">
         <div class="bon-title">{titlu}</div>
@@ -826,48 +823,46 @@ def bon_fiscal(d: dict, titlu: str = "BON FISCAL"):
             <span class="bon-net-val" style="color:{nc};">{net:,.2f} RON</span>
         </div>
         <div style="text-align:right;margin-top:0.6rem;">
-            <span class="badge {'badge-green' if net>=0 else 'badge-red'}">Marjă {d['marja_neta']:.1f}%</span>
+            <span class="badge {badge_cls}">Marjă {d['marja_neta']:.1f}%</span>
         </div>
     </div>""", unsafe_allow_html=True)
 
-def scade_stoc_din_vanzari(vanzari_input: list, retetar_df: pd.DataFrame):
-    """Scade ingredientele din stoc pe baza rețetarului. Returnează stoc_df actualizat."""
-    stoc_df = citeste_stoc()
-    if retetar_df.empty or stoc_df.empty:
-        return stoc_df
-    for v in vanzari_input:
-        prep_v = str(v["Preparat"]).lower().strip()
-        cant_v = _f(v["Cantitate_Vanduta"])
-        ings   = retetar_df[retetar_df["Preparat"].str.lower().str.strip() == prep_v]
-        for _, irow in ings.iterrows():
-            ing     = str(irow.get("Ingredient","")).lower().strip()
-            gramaj  = _f(irow.get("Gramaj",0)) / 1000.0
-            consum  = cant_v * gramaj
-            mask    = stoc_df["Produs"].str.lower().str.strip() == ing
-            if mask.any():
-                idx3 = stoc_df[mask].index[0]
-                cur  = _f(stoc_df.at[idx3,"Cantitate"])
-                stoc_df.at[idx3,"Cantitate"] = max(0, round(cur - consum, 4))
-    return stoc_df
+def stoc_bar(cantitate: float, minim: float, unitate: str):
+    """Bara vizuală de stoc."""
+    if minim > 0:
+        pct = min(100, int(cantitate / minim * 100))
+        color = MIA_GREEN if pct > 150 else (MIA_AMBER if pct > 80 else MIA_RED)
+        st.markdown(f"""
+        <div class="stoc-bar-wrap">
+            <div class="stoc-bar-fill" style="width:{pct}%;background:{color};"></div>
+        </div>
+        <div style="font-size:0.72rem;color:{MIA_FAINT};margin-top:3px;">
+            {cantitate:.2f} {unitate} · minim: {minim:.2f}
+        </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown(f'<div style="font-size:0.82rem;color:{MIA_MUTED};">{cantitate:.2f} {unitate}</div>',
+                    unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# NAVIGARE  —  st.tabs
+# NAVIGARE — Tabs
 # ─────────────────────────────────────────────────────────────────────────────
-tab_dash, tab_facturi, tab_vanzari, tab_setari, tab_sim = st.tabs([
-    "Dashboard",
-    "Scanare Facturi",
-    "Vânzări Zilnice",
-    "Setări & Cheltuieli",
-    "Simulator",
+tab_dash, tab_stoc, tab_facturi, tab_z, tab_retetar, tab_setari, tab_sim = st.tabs([
+    "✦ Dashboard",
+    "📦 Stoc",
+    "🧾 Scanare Facturi",
+    "📊 Raport Z",
+    "📋 Rețetar & Food Cost",
+    "⚙️ Setări",
+    "🧮 Simulator",
 ])
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  TAB 1 — DASHBOARD
 # ═════════════════════════════════════════════════════════════════════════════
 with tab_dash:
-    st.markdown('<p class="lana-eyebrow">Situație financiară</p>', unsafe_allow_html=True)
-    st.markdown('<h1 class="lana-title">Dashboard</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="lana-subtitle">Actualizat la ultima închidere · date live din Google Sheets</p>',
+    st.markdown('<p class="mia-eyebrow">Situație financiară</p>', unsafe_allow_html=True)
+    st.markdown('<h1 class="mia-title">Dashboard</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="mia-subtitle">Actualizat live · date din Google Sheets</p>',
                 unsafe_allow_html=True)
 
     cfg        = citeste_config()
@@ -877,9 +872,9 @@ with tab_dash:
 
     azi = date.today().strftime("%Y-%m-%d")
     v_azi = (vanzari_df[vanzari_df["Data"].astype(str).str.startswith(azi)]
-             if not vanzari_df.empty and "Data" in vanzari_df.columns
-             else pd.DataFrame(columns=["Preparat","Cantitate_Vanduta","Data"]))
+             if not vanzari_df.empty else pd.DataFrame(columns=["Preparat","Cantitate_Vanduta","Data"]))
 
+    # Calculează vânzări brute azi
     vb = 0.0
     if not v_azi.empty and not retetar_df.empty:
         for _, row in v_azi.iterrows():
@@ -892,110 +887,250 @@ with tab_dash:
     fc_zi = calculeaza_food_cost(v_azi, retetar_df, stoc_df)
     c     = cascada(vb, fc_zi, cfg)
 
-    col1, col2, col3 = st.columns(3)
+    # Alerte stoc scăzut
+    stoc_alerte = []
+    if not stoc_df.empty:
+        for _, row in stoc_df.iterrows():
+            cant_s = _f(row.get("Cantitate",0))
+            min_s  = _f(row.get("Stoc_Minim",0))
+            if min_s > 0 and cant_s <= min_s:
+                stoc_alerte.append(row.get("Produs",""))
+
+    if stoc_alerte:
+        st.markdown(f"""
+        <div class="mia-card animate-in" style="border-color:#FDE68A;background:#FFFBEB;">
+            <div style="font-size:0.85rem;font-weight:600;color:{MIA_AMBER};">
+                ⚠ Stoc scăzut · {len(stoc_alerte)} produse sub limita minimă
+            </div>
+            <div style="font-size:0.82rem;color:{MIA_MUTED};margin-top:4px;">
+                {', '.join(stoc_alerte[:6])}{'…' if len(stoc_alerte) > 6 else ''}
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         tip = "green" if c["profit_net_real"] >= 0 else "red"
-        card_metric("Profit Net Real · Bani în mână", f"{c['profit_net_real']:,.2f} RON",
-                    sub=f"Ziua de {azi}", badge=f"Marjă {c['marja_neta']:.1f}%", tip=tip)
+        card_metric("Profit Net · Bani în mână", f"{c['profit_net_real']:,.2f} RON",
+                    sub=f"Azi · {azi}", badge=f"Marjă {c['marja_neta']:.1f}%", tip=tip)
     with col2:
         fc_pct = (c["food_cost"] / c["vanzari_fara_tva"] * 100) if c["vanzari_fara_tva"] > 0 else 0
         card_metric("Food Cost", f"{c['food_cost']:,.2f} RON",
-                    sub=f"{fc_pct:.1f}% din vânzări · {c['food_cost_sursa']}")
+                    sub=f"{fc_pct:.1f}% din vânzări", tip="purple")
     with col3:
-        total_chelt = c["cheltuieli_fixe_zilnice"] + c["tva_colectat"] + c["impozit_firma"] + c["impozit_dividend"]
-        card_metric("Cheltuieli Totale", f"{total_chelt:,.2f} RON", sub="Taxe + fixe zilnice")
+        card_metric("Vânzări Brute", f"{c['vanzari_brute']:,.2f} RON",
+                    sub="inclusiv TVA", tip="blue")
+    with col4:
+        nr_stoc = len(stoc_df) if not stoc_df.empty else 0
+        card_metric("Produse în Stoc", str(nr_stoc),
+                    sub=f"{len(stoc_alerte)} sub limită" if stoc_alerte else "Stoc OK",
+                    badge="⚠ Alertă" if stoc_alerte else "✓ OK",
+                    tip="amber" if stoc_alerte else "green")
 
     st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
     col_left, col_right = st.columns([1.3, 1])
 
     with col_left:
-        st.markdown('<div class="lana-card animate-in">', unsafe_allow_html=True)
-        st.markdown('<div class="lana-eyebrow" style="margin-bottom:1rem;">Cascadă Financiară Zilnică</div>',
+        st.markdown('<div class="mia-card animate-in">', unsafe_allow_html=True)
+        st.markdown(f'<div class="mia-eyebrow" style="margin-bottom:1rem;">Cascadă Financiară · Azi</div>',
                     unsafe_allow_html=True)
         casc_row("Încasări brute (cu TVA)", c["vanzari_brute"], plus=True)
         casc_row("TVA colectat (→ ANAF)",   c["tva_colectat"])
         casc_row("Food Cost ingrediente",   c["food_cost"])
         casc_row("Cheltuieli fixe zilnice", c["cheltuieli_fixe_zilnice"])
-        pb_col = "#0a84ff"
         st.markdown(f"""
         <div class="casc-row">
-            <span class="casc-label" style="color:#ebebf5;font-weight:500;">Profit brut operațional</span>
-            <span class="casc-val" style="color:{pb_col};font-weight:600;">{c['profit_brut']:,.2f} RON</span>
+            <span class="casc-label" style="color:{MIA_TEXT};font-weight:600;">Profit brut operațional</span>
+            <span class="casc-val" style="color:{MIA_PURPLE};font-weight:700;">{c['profit_brut']:,.2f} RON</span>
         </div>""", unsafe_allow_html=True)
         casc_row("Impozit firmă",     c["impozit_firma"])
         casc_row("Impozit dividende", c["impozit_dividend"])
-        nc = "#30d158" if c["profit_net_real"] >= 0 else "#ff453a"
+        nc = MIA_GREEN if c["profit_net_real"] >= 0 else MIA_RED
         st.markdown(f"""
         <div style="display:flex;justify-content:space-between;align-items:center;padding:0.9rem 0 0.2rem;">
-            <span style="font-size:0.95rem;font-weight:700;color:#f5f5f7;">◈ Bani în mână (net real)</span>
-            <span style="font-size:1.1rem;font-weight:700;color:{nc};font-variant-numeric:tabular-nums;">
+            <span style="font-size:0.95rem;font-weight:700;color:{MIA_TEXT};">✦ Bani în mână (net real)</span>
+            <span style="font-size:1.1rem;font-weight:800;color:{nc};font-variant-numeric:tabular-nums;">
                 {c['profit_net_real']:,.2f} RON</span>
         </div>""", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col_right:
         if not v_azi.empty:
-            st.markdown('<div class="lana-card animate-in animate-in-delay-1">', unsafe_allow_html=True)
-            st.markdown('<div class="lana-eyebrow" style="margin-bottom:1rem;">Vânzări de azi</div>',
+            st.markdown('<div class="mia-card animate-in animate-in-delay-1">', unsafe_allow_html=True)
+            st.markdown(f'<div class="mia-eyebrow" style="margin-bottom:1rem;">Vânzări de azi</div>',
                         unsafe_allow_html=True)
             for _, row in v_azi.iterrows():
                 st.markdown(f"""
-                <div style="display:flex;justify-content:space-between;padding:0.4rem 0;
-                    border-bottom:1px solid #2c2c2e;font-size:0.88rem;">
-                    <span style="color:#8e8e93;">{row.get('Preparat','')}</span>
-                    <span style="color:#0a84ff;font-weight:500;">{row.get('Cantitate_Vanduta',0)} buc</span>
+                <div style="display:flex;justify-content:space-between;padding:0.45rem 0;
+                    border-bottom:1px solid #F3F4F6;font-size:0.88rem;">
+                    <span style="color:{MIA_MUTED};">{row.get('Preparat','')}</span>
+                    <span style="color:{MIA_PURPLE};font-weight:600;">{row.get('Cantitate_Vanduta',0)} buc</span>
                 </div>""", unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
         else:
-            st.markdown("""
-            <div class="lana-card animate-in" style="text-align:center;padding:2.5rem;">
+            st.markdown(f"""
+            <div class="mia-card animate-in" style="text-align:center;padding:2.5rem;">
                 <div style="font-size:2.2rem;margin-bottom:0.5rem;">📭</div>
-                <div style="font-size:0.9rem;color:#8e8e93;font-weight:500;">Nicio vânzare înregistrată azi</div>
-                <div style="font-size:0.78rem;color:#48484a;margin-top:4px;">
-                    Mergi la Vânzări Zilnice pentru a înregistra
+                <div style="font-size:0.9rem;color:{MIA_MUTED};font-weight:500;">Nicio vânzare înregistrată azi</div>
+                <div style="font-size:0.78rem;color:{MIA_FAINT};margin-top:4px;">
+                    Mergi la Raport Z pentru a înregistra
                 </div>
             </div>""", unsafe_allow_html=True)
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  TAB 2 — SCANARE FACTURI
+#  TAB 2 — STOC
+# ═════════════════════════════════════════════════════════════════════════════
+with tab_stoc:
+    st.markdown('<p class="mia-eyebrow">Gestiune inventar</p>', unsafe_allow_html=True)
+    st.markdown('<h1 class="mia-title">Stoc</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="mia-subtitle">Stocul se actualizează automat la scanarea facturilor și a Rapoartelor Z.</p>',
+                unsafe_allow_html=True)
+
+    stoc_df = citeste_stoc()
+
+    col_s1, col_s2 = st.columns([3, 1])
+    with col_s2:
+        if st.button("🔄 Reîncarcă stocul", use_container_width=True):
+            st.cache_resource.clear()
+            st.rerun()
+
+    if stoc_df.empty:
+        st.markdown(f"""
+        <div class="mia-card" style="text-align:center;padding:3rem;">
+            <div style="font-size:2.5rem;margin-bottom:0.8rem;">📦</div>
+            <div style="font-size:1rem;font-weight:600;color:{MIA_TEXT};">Stocul este gol</div>
+            <div style="font-size:0.85rem;color:{MIA_MUTED};margin-top:6px;">
+                Scanează o factură pentru a adăuga produse în stoc.
+            </div>
+        </div>""", unsafe_allow_html=True)
+    else:
+        # Grupare stoc cu alerte
+        stoc_ok   = []
+        stoc_alert = []
+        for _, row in stoc_df.iterrows():
+            cant_s = _f(row.get("Cantitate",0))
+            min_s  = _f(row.get("Stoc_Minim",0))
+            if min_s > 0 and cant_s <= min_s:
+                stoc_alert.append(row)
+            else:
+                stoc_ok.append(row)
+
+        if stoc_alert:
+            st.markdown(f'<div class="mia-eyebrow" style="margin-bottom:0.5rem;">⚠ Sub limita minimă</div>',
+                        unsafe_allow_html=True)
+            for row in stoc_alert:
+                cant = _f(row.get("Cantitate",0))
+                minim = _f(row.get("Stoc_Minim",0))
+                pct = int(cant/minim*100) if minim > 0 else 0
+                st.markdown(f"""
+                <div class="mia-card-sm" style="border-color:#FDE68A;margin-bottom:0.5rem;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <span style="font-weight:600;color:{MIA_TEXT};">{row.get('Produs','')}</span>
+                        <span class="badge badge-amber">{cant:.2f} {row.get('Unitate','')}</span>
+                    </div>
+                    <div class="stoc-bar-wrap" style="margin-top:8px;">
+                        <div class="stoc-bar-fill" style="width:{pct}%;background:{MIA_RED};"></div>
+                    </div>
+                    <div style="font-size:0.72rem;color:{MIA_FAINT};margin-top:3px;">
+                        {pct}% din stocul minim ({minim:.2f}) · Preț: {_f(row.get('Pret_Unitar',0)):.2f} RON/{row.get('Unitate','')}
+                    </div>
+                </div>""", unsafe_allow_html=True)
+
+        st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
+        st.markdown(f'<div class="mia-eyebrow" style="margin-bottom:0.5rem;">Toate produsele ({len(stoc_df)})</div>',
+                    unsafe_allow_html=True)
+        st.dataframe(
+            stoc_df.rename(columns={
+                "Produs":"Produs", "Cantitate":"Cant.", "Unitate":"UM",
+                "Pret_Unitar":"Preț/UM (RON)", "Data":"Ultima actualizare", "Stoc_Minim":"Minim"
+            }),
+            use_container_width=True, hide_index=True
+        )
+
+        # Adaugă produs manual
+        with st.expander("➕ Adaugă/Editează produs manual"):
+            ca, cb, cc, cd, ce = st.columns([2.5,1,1,1,1])
+            with ca: nm = st.text_input("Produs", key="stoc_nm", placeholder="ex: Făină")
+            with cb: qm = st.number_input("Cantitate", min_value=0.0, step=0.1, key="stoc_qm")
+            with cc:
+                um = st.selectbox("UM", ["kg","g","l","ml","buc"], key="stoc_um")
+            with cd: pm = st.number_input("Preț/UM", min_value=0.0, step=0.1, key="stoc_pm")
+            with ce: sm = st.number_input("Minim", min_value=0.0, step=0.1, key="stoc_sm",
+                                           help="Stoc minim pentru alertă")
+            if st.button("Salvează produs →", type="primary", key="btn_stoc_save"):
+                if nm:
+                    adauga_in_stoc([{"Produs":nm,"Cantitate":qm,"Unitate":um,
+                                     "Pret_Unitar":pm,"Data":date.today().strftime("%Y-%m-%d"),
+                                     "Stoc_Minim":sm}])
+                    st.success(f"✓ '{nm}' salvat în stoc.")
+                    st.rerun()
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  TAB 3 — SCANARE FACTURI → STOC
 # ═════════════════════════════════════════════════════════════════════════════
 with tab_facturi:
-    st.markdown('<p class="lana-eyebrow">AI · Gemini 1.5 Flash</p>', unsafe_allow_html=True)
-    st.markdown('<h1 class="lana-title">Scanare Facturi</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="lana-subtitle">Încarcă o imagine a facturii — AI-ul extrage produsele și alertează scumpirile.</p>',
+    st.markdown('<p class="mia-eyebrow">AI · Gemini 1.5 Flash</p>', unsafe_allow_html=True)
+    st.markdown('<h1 class="mia-title">Scanare Facturi</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="mia-subtitle">Scanează factura → AI extrage produsele → Se adaugă automat în stoc.</p>',
                 unsafe_allow_html=True)
 
     if "produse_factura" not in st.session_state:
         st.session_state.produse_factura = []
+    if "meta_factura" not in st.session_state:
+        st.session_state.meta_factura = {}
 
-    uploaded = st.file_uploader("Imagine factură (JPG, PNG, WEBP)", type=["jpg","jpeg","png","webp"])
+    uploaded = st.file_uploader("Imagine factură (JPG, PNG, WEBP)", type=["jpg","jpeg","png","webp"],
+                                 key="fact_upload")
 
     if uploaded:
         img_bytes = uploaded.read()
         col_img, col_act = st.columns([1, 2])
         with col_img:
-            st.image(Image.open(io.BytesIO(img_bytes)), use_container_width=True, caption="Factură încărcată")
+            st.image(Image.open(io.BytesIO(img_bytes)), use_container_width=True, caption="Factură")
         with col_act:
-            st.markdown('<div class="lana-card-sm">', unsafe_allow_html=True)
-            st.markdown('<div class="lana-eyebrow">Procesare AI</div>', unsafe_allow_html=True)
+            st.markdown('<div class="mia-card-sm">', unsafe_allow_html=True)
+            st.markdown(f'<div class="mia-eyebrow">Procesare AI</div>', unsafe_allow_html=True)
             st.markdown(
-                '<p style="font-size:0.88rem;color:#8e8e93;margin-bottom:1rem;">'
-                'Gemini 1.5 Flash va identifica produsele, cantitățile, '
-                'unitățile și prețurile unitare.</p>', unsafe_allow_html=True)
-            if st.button("🔍 Extrage cu AI", type="primary"):
+                f'<p style="font-size:0.88rem;color:{MIA_MUTED};margin-bottom:1rem;">'
+                'Gemini 1.5 Flash identifică furnizorul, numărul facturii, '
+                'produsele, cantitățile și prețurile unitare.</p>', unsafe_allow_html=True)
+            if st.button("🔍 Extrage cu AI", type="primary", key="btn_extrage_fact"):
                 with st.spinner("Gemini analizează factura…"):
                     rez = extrage_factura_ai(img_bytes)
                     if rez and "produse" in rez:
                         st.session_state.produse_factura = rez["produse"]
+                        st.session_state.meta_factura = {
+                            "furnizor": rez.get("furnizor",""),
+                            "nr_factura": rez.get("nr_factura",""),
+                            "data": rez.get("data", date.today().strftime("%Y-%m-%d")),
+                            "total": rez.get("total", 0.0),
+                        }
                         st.success(f"✓ {len(rez['produse'])} produse identificate.")
                     else:
                         st.session_state.produse_factura = []
             st.markdown('</div>', unsafe_allow_html=True)
 
+    if st.session_state.meta_factura:
+        meta = st.session_state.meta_factura
+        st.markdown(f"""
+        <div class="mia-card animate-in" style="margin-top:1rem;">
+            <div class="mia-eyebrow">Date factură</div>
+            <div style="display:flex;gap:2rem;flex-wrap:wrap;margin-top:0.5rem;">
+                <div><span style="color:{MIA_MUTED};font-size:0.8rem;">Furnizor</span><br>
+                     <strong style="color:{MIA_TEXT};">{meta.get('furnizor','—')}</strong></div>
+                <div><span style="color:{MIA_MUTED};font-size:0.8rem;">Nr. Factură</span><br>
+                     <strong style="color:{MIA_TEXT};">{meta.get('nr_factura','—')}</strong></div>
+                <div><span style="color:{MIA_MUTED};font-size:0.8rem;">Data</span><br>
+                     <strong style="color:{MIA_TEXT};">{meta.get('data','—')}</strong></div>
+                <div><span style="color:{MIA_MUTED};font-size:0.8rem;">Total</span><br>
+                     <strong style="color:{MIA_PURPLE};">{_f(meta.get('total',0)):,.2f} RON</strong></div>
+            </div>
+        </div>""", unsafe_allow_html=True)
+
     if st.session_state.produse_factura:
-        stoc_df = citeste_stoc()
-        st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
-        st.markdown('<div class="lana-eyebrow">Produse extrase · Verifică și editează</div>', unsafe_allow_html=True)
+        stoc_df_f = citeste_stoc()
+        st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
+        st.markdown(f'<div class="mia-eyebrow">Produse extrase · Verifică și editează</div>',
+                    unsafe_allow_html=True)
 
         produse_editate = []
         alerte          = []
@@ -1003,29 +1138,38 @@ with tab_facturi:
 
         for i, prod in enumerate(st.session_state.produse_factura):
             with st.container():
-                c1, c2, c3, c4 = st.columns([2.5, 1, 1.2, 1.2])
+                c1, c2, c3, c4, c5 = st.columns([2.5, 1, 1.2, 1.2, 1])
                 with c1:
                     nume = st.text_input("Produs", value=str(prod.get("produs","")), key=f"pn_{i}")
                 with c2:
                     cant = st.number_input("Cantitate", value=_f(prod.get("cantitate",0)),
                                            key=f"pc_{i}", min_value=0.0)
                 with c3:
-                    unit_ai      = str(prod.get("unitate","")).lower().strip()
+                    unit_ai = str(prod.get("unitate","")).lower().strip()
                     unit_invalid = unit_ai not in UNITATI_VALIDE
                     unit = st.text_input("Unitate", value="" if unit_invalid else unit_ai,
-                                         key=f"pu_{i}", placeholder="kg / g / l / buc")
+                                         key=f"pu_{i}", placeholder="kg/g/l/buc")
                     if unit_invalid:
-                        st.markdown('<p style="font-size:0.72rem;color:#ff453a;margin-top:-8px;">⚠ Unitate necunoscută</p>',
+                        st.markdown(f'<p style="font-size:0.72rem;color:{MIA_RED};margin-top:-8px;">⚠ Unitate necunoscută</p>',
                                     unsafe_allow_html=True)
                         are_invalide = True
                     if unit and unit.lower().strip() not in UNITATI_VALIDE:
                         are_invalide = True
                 with c4:
-                    pret = st.number_input("Preț / U", value=_f(prod.get("pret_unitar",0)),
+                    pret = st.number_input("Preț/UM", value=_f(prod.get("pret_unitar",0)),
                                            key=f"pp_{i}", min_value=0.0)
+                with c5:
+                    sm_val = 0.0
+                    if not stoc_df_f.empty:
+                        mask_sm = stoc_df_f["Produs"].str.lower().str.strip() == str(nume).lower().strip()
+                        if mask_sm.any():
+                            sm_val = _f(stoc_df_f[mask_sm].iloc[0].get("Stoc_Minim",0))
+                    stoc_min = st.number_input("Minim", value=sm_val,
+                                               key=f"sm_{i}", min_value=0.0, help="Stoc minim alertă")
 
-                if not stoc_df.empty and "Produs" in stoc_df.columns:
-                    m = stoc_df[stoc_df["Produs"].str.lower().str.strip() == str(nume).lower().strip()]
+                # Alertă scumpire
+                if not stoc_df_f.empty and "Produs" in stoc_df_f.columns:
+                    m = stoc_df_f[stoc_df_f["Produs"].str.lower().str.strip() == str(nume).lower().strip()]
                     if not m.empty:
                         try:
                             pret_v = _f(m.iloc[0].get("Pret_Unitar",0))
@@ -1036,116 +1180,104 @@ with tab_facturi:
                 produse_editate.append({
                     "Produs": nume, "Cantitate": cant, "Unitate": unit,
                     "Pret_Unitar": pret, "Data": date.today().strftime("%Y-%m-%d"),
+                    "Stoc_Minim": stoc_min,
                 })
 
         for a in alerte:
             diff_pct = (a['nou'] - a['vechi']) / a['vechi'] * 100
             badge_cls = "badge-red" if diff_pct > 5 else "badge-amber"
             st.markdown(f"""
-            <div class="lana-card-sm" style="border-color:#ff9f0a;margin-bottom:0.5rem;">
-                ⚠️ <strong style="color:#f5f5f7;">{a['produs']}</strong>
-                <span style="color:#8e8e93;"> s-a scumpit de la </span>
-                <strong style="color:#f5f5f7;">{a['vechi']:.2f}</strong>
-                <span style="color:#8e8e93;"> la </span>
-                <strong style="color:#f5f5f7;">{a['nou']:.2f} RON</strong>
+            <div class="mia-card-sm" style="border-color:#FDE68A;margin-bottom:0.5rem;">
+                ⚠️ <strong style="color:{MIA_TEXT};">{a['produs']}</strong>
+                <span style="color:{MIA_MUTED};"> s-a scumpit de la </span>
+                <strong>{a['vechi']:.2f}</strong>
+                <span style="color:{MIA_MUTED};"> la </span>
+                <strong style="color:{MIA_PURPLE};">{a['nou']:.2f} RON</strong>
                 &nbsp;<span class="badge {badge_cls}">+{diff_pct:.1f}%</span>
-                {'&nbsp;<span class="badge badge-red">Alertă Scumpire</span>' if diff_pct > 5 else ''}
             </div>""", unsafe_allow_html=True)
 
         if are_invalide:
             st.warning("Completează unitățile marcate cu ⚠ pentru a activa salvarea.")
 
         st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
-        if st.button("Salvează în Stoc →", disabled=are_invalide, type="primary"):
-            stoc_curent = citeste_stoc()
-            stoc_nou    = pd.DataFrame(produse_editate)
-            if not stoc_curent.empty:
-                for _, row in stoc_nou.iterrows():
-                    mask = stoc_curent["Produs"].str.lower().str.strip() == str(row["Produs"]).lower().strip()
-                    if mask.any():
-                        idx2 = stoc_curent[mask].index[0]
-                        stoc_curent.at[idx2,"Cantitate"]   = row["Cantitate"]
-                        stoc_curent.at[idx2,"Pret_Unitar"] = row["Pret_Unitar"]
-                        stoc_curent.at[idx2,"Data"]        = row["Data"]
-                    else:
-                        stoc_curent = pd.concat([stoc_curent, pd.DataFrame([row])], ignore_index=True)
-                salveaza_stoc(stoc_curent)
-            else:
-                salveaza_stoc(stoc_nou)
-            st.success(f"✓ {len(produse_editate)} produse salvate în Stoc.")
+        if st.button("📦 Adaugă în Stoc →", disabled=are_invalide, type="primary", key="btn_save_stoc"):
+            adauga_in_stoc(produse_editate)
+            # Log factură
+            meta = st.session_state.meta_factura
+            salveaza_factura_log(
+                meta.get("data", date.today().strftime("%Y-%m-%d")),
+                meta.get("furnizor",""),
+                meta.get("nr_factura",""),
+                _f(meta.get("total",0)),
+                json.dumps([p["Produs"] for p in produse_editate])
+            )
+            st.success(f"✓ {len(produse_editate)} produse adăugate/actualizate în Stoc.")
             st.session_state.produse_factura = []
+            st.session_state.meta_factura = {}
             st.rerun()
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  TAB 3 — VÂNZĂRI ZILNICE  (cu sub-tabs: Scanare Raport Z | Introducere Manuală)
+#  TAB 4 — RAPORT Z → SCĂDERE STOC
 # ═════════════════════════════════════════════════════════════════════════════
-with tab_vanzari:
-    st.markdown('<p class="lana-eyebrow">Închidere de zi</p>', unsafe_allow_html=True)
-    st.markdown('<h1 class="lana-title">Vânzări Zilnice</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="lana-subtitle">Alege modul de lucru pentru închiderea de azi.</p>',
+with tab_z:
+    st.markdown('<p class="mia-eyebrow">Închidere de zi · AI</p>', unsafe_allow_html=True)
+    st.markdown('<h1 class="mia-title">Raport Z</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="mia-subtitle">Scanează Raportul Z → AI extrage vânzările → Stocul se scade automat pe baza rețetarului.</p>',
                 unsafe_allow_html=True)
 
-    retetar_df = citeste_retetar()
-    preparate  = sorted(retetar_df["Preparat"].dropna().unique().tolist()) if not retetar_df.empty else []
+    retetar_df_z = citeste_retetar()
+    preparate_z  = sorted(retetar_df_z["Preparat"].dropna().unique().tolist()) if not retetar_df_z.empty else []
 
-    # ── Sub-tab state ──────────────────────────────────────────────────────
-    if "vanzari_subtab" not in st.session_state:
-        st.session_state.vanzari_subtab = "scanare"
+    if "raport_z_rezultate" not in st.session_state:
+        st.session_state.raport_z_rezultate = []
 
-    col_st1, col_st2, _ = st.columns([1, 1, 4])
+    # Subtab: Scanare / Manual
+    if "z_subtab" not in st.session_state:
+        st.session_state.z_subtab = "scanare"
+
+    col_st1, col_st2, _ = st.columns([1.2, 1.2, 5])
     with col_st1:
         if st.button("📷 Scanare Raport Z",
-                     type="primary" if st.session_state.vanzari_subtab == "scanare" else "secondary"):
-            st.session_state.vanzari_subtab = "scanare"
-            st.rerun()
+                     type="primary" if st.session_state.z_subtab == "scanare" else "secondary",
+                     key="btn_z_scan"):
+            st.session_state.z_subtab = "scanare"; st.rerun()
     with col_st2:
         if st.button("✏️ Introducere Manuală",
-                     type="primary" if st.session_state.vanzari_subtab == "manual" else "secondary"):
-            st.session_state.vanzari_subtab = "manual"
-            st.rerun()
+                     type="primary" if st.session_state.z_subtab == "manual" else "secondary",
+                     key="btn_z_manual"):
+            st.session_state.z_subtab = "manual"; st.rerun()
 
-    st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:0.75rem;'></div>", unsafe_allow_html=True)
 
-    # ══════════════════════════════════════════════════════════════════════
-    #  SUB-TAB A — SCANARE RAPORT Z
-    # ══════════════════════════════════════════════════════════════════════
-    if st.session_state.vanzari_subtab == "scanare":
-
-        if "raport_z_rezultate" not in st.session_state:
-            st.session_state.raport_z_rezultate = []   # lista de dict {preparat, cant_ai, cant_editata, matched}
-
-        st.markdown("""
-        <div class="lana-card animate-in">
-            <div class="lana-eyebrow" style="margin-bottom:0.5rem;">Pas 1 · Încarcă imaginea</div>
-            <p style="font-size:0.88rem;color:#8e8e93;margin-bottom:0;">
-                Fă o poză la Raportul Z sau la bonurile de la finalul zilei și încarcă-o mai jos.
-                Gemini va extrage automat preparatele și cantitățile.
+    # ── SCANARE ──────────────────────────────────────────────────────────────
+    if st.session_state.z_subtab == "scanare":
+        st.markdown(f"""
+        <div class="mia-card animate-in">
+            <div class="mia-eyebrow" style="margin-bottom:0.4rem;">Pas 1 · Încarcă imaginea</div>
+            <p style="font-size:0.88rem;color:{MIA_MUTED};margin:0;">
+                Fotografiază Raportul Z sau bonurile zilei. Gemini extrage preparatele și cantitățile,
+                le potrivește cu rețetarul și scade automat ingredientele din stoc.
             </p>
-        </div>
-        """, unsafe_allow_html=True)
+        </div>""", unsafe_allow_html=True)
 
-        uploaded_z = st.file_uploader(
-            "Imagine Raport Z / Bon Fiscal (JPG, PNG, WEBP)",
-            type=["jpg","jpeg","png","webp"],
-            key="raport_z_upload"
-        )
+        uploaded_z = st.file_uploader("Imagine Raport Z / Bon (JPG, PNG, WEBP)",
+                                       type=["jpg","jpeg","png","webp"], key="z_upload")
 
         if uploaded_z:
             img_bytes_z = uploaded_z.read()
             col_zi, col_za = st.columns([1, 2])
             with col_zi:
-                st.image(Image.open(io.BytesIO(img_bytes_z)), use_container_width=True,
-                         caption="Raport Z / Bon")
+                st.image(Image.open(io.BytesIO(img_bytes_z)), use_container_width=True, caption="Raport Z")
             with col_za:
-                st.markdown('<div class="lana-card-sm">', unsafe_allow_html=True)
-                st.markdown('<div class="lana-eyebrow">OCR cu Gemini AI</div>', unsafe_allow_html=True)
+                st.markdown('<div class="mia-card-sm">', unsafe_allow_html=True)
+                st.markdown(f'<div class="mia-eyebrow">OCR cu Gemini AI</div>', unsafe_allow_html=True)
                 st.markdown(
-                    '<p style="font-size:0.85rem;color:#8e8e93;margin-bottom:1rem;">'
-                    'AI-ul extrage preparatele vândute, apoi le potrivește automat '
-                    'cu rețetarul (fuzzy matching).</p>', unsafe_allow_html=True)
+                    f'<p style="font-size:0.85rem;color:{MIA_MUTED};margin-bottom:1rem;">'
+                    'AI-ul extrage preparatele vândute și le cuplează automat cu rețetarul.</p>',
+                    unsafe_allow_html=True)
                 if st.button("🔍 Scanează Raportul Z", type="primary", key="btn_scan_z"):
-                    if not preparate:
-                        st.warning("Rețetarul este gol. Adaugă preparate în foaia 'Retetar' înainte de scanare.")
+                    if not preparate_z:
+                        st.warning("Rețetarul este gol. Adaugă preparate în foaia 'Retetar'.")
                     else:
                         with st.spinner("Gemini analizează raportul…"):
                             rez_z = extrage_raport_z_ai(img_bytes_z)
@@ -1154,34 +1286,27 @@ with tab_vanzari:
                             for item in rez_z["vanzari"]:
                                 ai_name = str(item.get("produs","")).strip()
                                 ai_cant = _f(item.get("cantitate", 0))
-                                matched, score = fuzzy_match_preparat(ai_name, preparate)
+                                matched, score = fuzzy_match_preparat(ai_name, preparate_z)
                                 rezultate.append({
-                                    "ai_name":  ai_name,
-                                    "preparat": matched if matched else "",
-                                    "cant":     ai_cant,
-                                    "score":    score,
-                                    "matched":  matched is not None,
+                                    "ai_name": ai_name, "preparat": matched if matched else "",
+                                    "cant": ai_cant, "score": score, "matched": matched is not None,
                                 })
                             st.session_state.raport_z_rezultate = rezultate
-                            st.success(f"✓ {len(rezultate)} preparate detectate de AI.")
+                            st.success(f"✓ {len(rezultate)} preparate detectate.")
                         else:
                             st.session_state.raport_z_rezultate = []
                 st.markdown('</div>', unsafe_allow_html=True)
 
-        # ── Tabel confirmare ──────────────────────────────────────────────
+        # Tabel confirmare
         if st.session_state.raport_z_rezultate:
             st.markdown("<div style='height:0.75rem;'></div>", unsafe_allow_html=True)
-            st.markdown("""
-            <div class="lana-card animate-in">
-                <div class="lana-eyebrow" style="margin-bottom:0.75rem;">
-                    Pas 2 · Confirmă și corectează
-                </div>
-                <p style="font-size:0.85rem;color:#8e8e93;margin:0 0 1rem;">
-                    AI-ul a cuplat automat denumirile detectate cu preparatele din rețetar.
-                    Verifică și ajustează cantitățile sau preparatele dacă e nevoie.
+            st.markdown(f"""
+            <div class="mia-card animate-in">
+                <div class="mia-eyebrow" style="margin-bottom:0.5rem;">Pas 2 · Confirmă și corectează</div>
+                <p style="font-size:0.85rem;color:{MIA_MUTED};margin:0 0 1rem;">
+                    Verifică preparatele cuplate automat. Ajustează dacă e nevoie, apoi salvează.
                 </p>
-            </div>
-            """, unsafe_allow_html=True)
+            </div>""", unsafe_allow_html=True)
 
             vanzari_confirmate = []
             for i, row in enumerate(st.session_state.raport_z_rezultate):
@@ -1192,158 +1317,225 @@ with tab_vanzari:
                              else '<span class="match-badge-err">⚠ Necuplat</span>')
                     st.markdown(
                         f'<div style="padding-top:1.6rem;">'
-                        f'<span style="font-size:0.78rem;color:#636366;">AI: {row["ai_name"]}</span>'
+                        f'<span style="font-size:0.78rem;color:{MIA_FAINT};">AI: {row["ai_name"]}</span>'
                         f'&nbsp;{badge}</div>',
                         unsafe_allow_html=True)
                 with col_b:
-                    prep_options = ["— alege —"] + preparate
-                    default_idx  = (prep_options.index(row["preparat"])
-                                    if row["preparat"] in prep_options else 0)
-                    sel_prep = st.selectbox(
-                        "Preparat din rețetar",
-                        prep_options,
-                        index=default_idx,
-                        key=f"rz_prep_{i}"
-                    )
+                    prep_opts = ["— alege —"] + preparate_z
+                    def_idx   = (prep_opts.index(row["preparat"])
+                                 if row["preparat"] in prep_opts else 0)
+                    sel_prep  = st.selectbox("Preparat", prep_opts, index=def_idx, key=f"zp_{i}")
                 with col_c:
-                    cant_ed = st.number_input(
-                        "Cant.", value=row["cant"], min_value=0.0, step=1.0,
-                        key=f"rz_cant_{i}"
-                    )
-
-                if sel_prep and sel_prep != "— alege —" and cant_ed > 0:
+                    sel_cant = st.number_input("Cantitate", value=float(row["cant"]),
+                                               min_value=0.0, step=1.0, key=f"zc_{i}")
+                if sel_prep and sel_prep != "— alege —" and sel_cant > 0:
                     vanzari_confirmate.append({
                         "Preparat": sel_prep,
-                        "Cantitate_Vanduta": cant_ed,
+                        "Cantitate_Vanduta": sel_cant,
+                        "Data": date.today().strftime("%Y-%m-%d"),
                     })
 
             st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
-            data_z = st.date_input("Data închiderii (Raport Z)", value=date.today(), key="data_rz")
+            col_btn1, col_btn2 = st.columns([1, 2])
+            with col_btn1:
+                data_z = st.date_input("Data raportului", value=date.today(), key="z_date")
 
-            n_ok = len([v for v in vanzari_confirmate if v["Cantitate_Vanduta"] > 0])
-            st.markdown(f"""
-            <div style="font-size:0.82rem;color:#636366;margin-bottom:0.75rem;">
-                {n_ok} preparate selectate · gata de înregistrare
-            </div>""", unsafe_allow_html=True)
+            if vanzari_confirmate and st.button("💾 Salvează Vânzările + Scade Stoc →",
+                                                 type="primary", key="btn_z_save"):
+                # 1) Scade stocul
+                stoc_nou, scazut = scade_stoc_din_vanzari(
+                    [{"Preparat":v["Preparat"],"Cantitate_Vanduta":v["Cantitate_Vanduta"]}
+                     for v in vanzari_confirmate],
+                    retetar_df_z
+                )
+                salveaza_stoc(stoc_nou)
+                # 2) Salvează vânzările
+                vz_cu_data = [{**v, "Data": str(data_z)} for v in vanzari_confirmate]
+                salveaza_vanzari(vz_cu_data)
+                st.success(f"✓ {len(vanzari_confirmate)} vânzări salvate. "
+                           f"{len(scazut)} ingrediente scăzute din stoc.")
+                # Arată ce s-a scăzut
+                if scazut:
+                    for item in scazut:
+                        minim = item["minim"]
+                        cls   = "stoc-low" if minim > 0 and item["dupa"] <= minim else "stoc-ok"
+                        st.markdown(f"""
+                        <div class="{cls}">
+                            <strong>{item['ingredient']}</strong>:
+                            {item['inainte']:.3f} → {item['dupa']:.3f} {item['unitate']}
+                            (−{item['consum']:.3f})
+                            {'⚠ Sub minim!' if minim > 0 and item["dupa"] <= minim else ''}
+                        </div>""", unsafe_allow_html=True)
+                st.session_state.raport_z_rezultate = []
+                st.rerun()
 
-            if st.button("✓ Înregistrează Închiderea →", type="primary", key="btn_inreg_z"):
-                if not vanzari_confirmate:
-                    st.warning("Niciun preparat selectat.")
-                else:
-                    rows_v = [{"Preparat": v["Preparat"],
-                               "Cantitate_Vanduta": v["Cantitate_Vanduta"],
-                               "Data": data_z.strftime("%Y-%m-%d")}
-                              for v in vanzari_confirmate]
-                    salveaza_vanzari(rows_v)
-                    stoc_actualizat = scade_stoc_din_vanzari(vanzari_confirmate, retetar_df)
-                    salveaza_stoc(stoc_actualizat)
-                    st.success(f"✓ {len(rows_v)} preparate înregistrate. Stocul a fost actualizat automat.")
-                    st.session_state.raport_z_rezultate = []
-                    st.rerun()
-
-    # ══════════════════════════════════════════════════════════════════════
-    #  SUB-TAB B — INTRODUCERE MANUALĂ
-    # ══════════════════════════════════════════════════════════════════════
+    # ── MANUAL ───────────────────────────────────────────────────────────────
     else:
-        if "vanzari_zi" not in st.session_state:
-            st.session_state.vanzari_zi = [{"preparat":"","cantitate":0}]
+        st.markdown(f"""
+        <div class="mia-card animate-in">
+            <div class="mia-eyebrow" style="margin-bottom:0.4rem;">Introducere manuală</div>
+            <p style="font-size:0.88rem;color:{MIA_MUTED};margin:0;">
+                Adaugă manual vânzările zilei. Stocul se va scădea automat pe baza rețetarului.
+            </p>
+        </div>""", unsafe_allow_html=True)
 
-        st.markdown('<div class="lana-card animate-in">', unsafe_allow_html=True)
-        st.markdown('<div class="lana-eyebrow" style="margin-bottom:1rem;">Preparate vândute azi</div>',
-                    unsafe_allow_html=True)
+        if not preparate_z:
+            st.warning("Rețetarul este gol. Adaugă preparate mai întâi.")
+        else:
+            nr_prep = st.number_input("Număr de preparate vândute azi", min_value=1, max_value=30,
+                                      value=3, step=1, key="z_nr_man")
+            data_z_m = st.date_input("Data", value=date.today(), key="z_date_man")
+            vanzari_man = []
+            for i in range(int(nr_prep)):
+                ca, cb = st.columns([3, 1])
+                with ca:
+                    prep_m = st.selectbox("Preparat", ["— alege —"] + preparate_z, key=f"zm_p_{i}")
+                with cb:
+                    cant_m = st.number_input("Cantitate", min_value=0.0, step=1.0, key=f"zm_c_{i}")
+                if prep_m and prep_m != "— alege —" and cant_m > 0:
+                    vanzari_man.append({"Preparat": prep_m, "Cantitate_Vanduta": cant_m,
+                                        "Data": str(data_z_m)})
 
-        if st.button("+ Adaugă preparat"):
-            st.session_state.vanzari_zi.append({"preparat":"","cantitate":0})
-
-        vanzari_input = []
-        for i, item in enumerate(st.session_state.vanzari_zi):
-            col_v1, col_v2 = st.columns([2.5, 1])
-            with col_v1:
-                if preparate:
-                    prep = st.selectbox("Preparat", ["— alege —"] + preparate, key=f"vp_{i}")
-                else:
-                    prep = st.text_input("Preparat", value="", key=f"vp_{i}", placeholder="Nume preparat")
-            with col_v2:
-                cant = st.number_input("Cantitate", value=0, min_value=0, step=1, key=f"vc_{i}")
-            if prep and prep != "— alege —":
-                vanzari_input.append({"Preparat": prep, "Cantitate_Vanduta": cant})
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        data_zi = st.date_input("Data închiderii", value=date.today())
-        st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
-
-        if st.button("Înregistrează Închiderea de Zi →", type="primary"):
-            if not vanzari_input:
-                st.warning("Nu ai introdus niciun preparat.")
-            else:
-                rows_v = [{"Preparat": v["Preparat"],
-                           "Cantitate_Vanduta": v["Cantitate_Vanduta"],
-                           "Data": data_zi.strftime("%Y-%m-%d")}
-                          for v in vanzari_input if v["Cantitate_Vanduta"] > 0]
-                salveaza_vanzari(rows_v)
-                stoc_actualizat = scade_stoc_din_vanzari(vanzari_input, retetar_df)
-                salveaza_stoc(stoc_actualizat)
-                st.success(f"✓ {len(rows_v)} preparate înregistrate. Stocul actualizat.")
-                st.session_state.vanzari_zi = [{"preparat":"","cantitate":0}]
+            if vanzari_man and st.button("💾 Salvează + Scade Stoc →", type="primary", key="btn_z_man_save"):
+                stoc_nou, scazut = scade_stoc_din_vanzari(
+                    [{"Preparat":v["Preparat"],"Cantitate_Vanduta":v["Cantitate_Vanduta"]}
+                     for v in vanzari_man],
+                    retetar_df_z
+                )
+                salveaza_stoc(stoc_nou)
+                salveaza_vanzari(vanzari_man)
+                st.success(f"✓ {len(vanzari_man)} vânzări salvate. "
+                           f"{len(scazut)} ingrediente scăzute din stoc.")
+                for item in scazut:
+                    minim = item["minim"]
+                    cls   = "stoc-low" if minim > 0 and item["dupa"] <= minim else "stoc-ok"
+                    st.markdown(f"""
+                    <div class="{cls}">
+                        <strong>{item['ingredient']}</strong>:
+                        {item['inainte']:.3f} → {item['dupa']:.3f} {item['unitate']}
+                        (−{item['consum']:.3f})
+                        {'⚠ Sub minim!' if minim > 0 and item["dupa"] <= minim else ''}
+                    </div>""", unsafe_allow_html=True)
                 st.rerun()
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  TAB 4 — SETĂRI & CHELTUIELI
+#  TAB 5 — REȚETAR & FOOD COST
 # ═════════════════════════════════════════════════════════════════════════════
-with tab_setari:
-    st.markdown('<p class="lana-eyebrow">Configurare</p>', unsafe_allow_html=True)
-    st.markdown('<h1 class="lana-title">Setări & Cheltuieli</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="lana-subtitle">Configurează parametrii fiscali și cheltuielile lunare fixe.</p>',
+with tab_retetar:
+    st.markdown('<p class="mia-eyebrow">Gestiune rețetar</p>', unsafe_allow_html=True)
+    st.markdown('<h1 class="mia-title">Rețetar & Food Cost</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="mia-subtitle">Pe baza rețetarului se calculează food costul și se scade stocul automat.</p>',
                 unsafe_allow_html=True)
 
-    cfg = citeste_config()
-    col_s1, col_s2 = st.columns(2)
+    retetar_df_r = citeste_retetar()
+    stoc_df_r    = citeste_stoc()
 
-    with col_s1:
-        st.markdown('<div class="lana-card">', unsafe_allow_html=True)
-        st.markdown('<div class="lana-eyebrow" style="margin-bottom:1rem;">Regim Fiscal</div>',
+    col_r1, col_r2 = st.columns([2, 1])
+    with col_r1:
+        if not retetar_df_r.empty:
+            st.markdown(f'<div class="mia-eyebrow" style="margin-bottom:0.5rem;">Rețetar ({len(retetar_df_r)} înregistrări)</div>',
+                        unsafe_allow_html=True)
+            # Food cost per preparat
+            stoc_idx_r = {str(r.get("Produs","")).lower().strip(): _f(r.get("Pret_Unitar",0))
+                          for _, r in stoc_df_r.iterrows()} if not stoc_df_r.empty else {}
+            preparate_r = retetar_df_r["Preparat"].dropna().unique().tolist()
+            for prep in sorted(preparate_r):
+                ings_p = retetar_df_r[retetar_df_r["Preparat"] == prep]
+                pret_vz = _f(ings_p.iloc[0].get("Pret_Vanzare",0)) if not ings_p.empty else 0
+                fc_p = sum(
+                    (_f(r.get("Gramaj",0))/1000.0)*stoc_idx_r.get(str(r.get("Ingredient","")).lower().strip(),0)
+                    for _, r in ings_p.iterrows()
+                )
+                fc_pct_p = (fc_p/pret_vz*100) if pret_vz > 0 else 0
+                fc_color = MIA_GREEN if fc_pct_p < 30 else (MIA_AMBER if fc_pct_p < 40 else MIA_RED)
+                with st.expander(f"🍽 {prep} · Food Cost: {fc_p:.2f} RON ({fc_pct_p:.1f}%)"):
+                    for _, ing_r in ings_p.iterrows():
+                        st.markdown(f"""
+                        <div style="display:flex;justify-content:space-between;
+                            padding:0.3rem 0;border-bottom:1px solid #F3F4F6;font-size:0.86rem;">
+                            <span style="color:{MIA_MUTED};">{ing_r.get('Ingredient','')}</span>
+                            <span style="color:{MIA_TEXT};">{_f(ing_r.get('Gramaj',0)):.0f}g</span>
+                        </div>""", unsafe_allow_html=True)
+                    st.markdown(f"""
+                    <div style="display:flex;justify-content:space-between;padding:0.5rem 0;
+                        font-size:0.9rem;font-weight:600;">
+                        <span style="color:{MIA_TEXT};">Food Cost total</span>
+                        <span style="color:{fc_color};">{fc_p:.2f} RON
+                            ({fc_pct_p:.1f}% din preț {pret_vz:.2f} RON)</span>
+                    </div>""", unsafe_allow_html=True)
+        else:
+            st.info("Rețetarul este gol. Adaugă preparate în foaia 'Retetar' din Google Sheets.")
+
+    with col_r2:
+        st.markdown(f'<div class="mia-eyebrow" style="margin-bottom:0.5rem;">Adaugă ingredient în rețetar</div>',
                     unsafe_allow_html=True)
-        regim_opts   = {"Micro 1%":"micro1","Micro 3%":"micro3","Profit 16%":"profit16"}
-        regim_rev    = {v:k for k,v in regim_opts.items()}
-        regim_actual = regim_rev.get(str(cfg.get("regim_fiscal","micro1")),"Micro 1%")
-        regim_sel    = st.selectbox("Regim fiscal",list(regim_opts.keys()),
-                                    index=list(regim_opts.keys()).index(regim_actual))
-        tva_opts   = {"TVA 9% (restaurante)":0.09,"TVA 19% (standard)":0.19}
-        tva_rev    = {v:k for k,v in tva_opts.items()}
-        tva_actual = tva_rev.get(_f(cfg.get("cota_tva",0.09)),"TVA 9% (restaurante)")
-        tva_sel    = st.selectbox("TVA",list(tva_opts.keys()),
-                                   index=list(tva_opts.keys()).index(tva_actual))
-        div_opts   = {"Impozit dividend 8%":0.08,"Impozit dividend 10%":0.10}
-        div_rev    = {v:k for k,v in div_opts.items()}
-        div_actual = div_rev.get(_f(cfg.get("cota_dividend",0.08)),"Impozit dividend 8%")
-        div_sel    = st.selectbox("Dividend",list(div_opts.keys()),
-                                   index=list(div_opts.keys()).index(div_actual))
+        with st.container():
+            prep_new  = st.text_input("Preparat", key="ret_prep", placeholder="ex: Burger Clasic")
+            ing_new   = st.text_input("Ingredient", key="ret_ing", placeholder="ex: Carne Vită")
+            gram_new  = st.number_input("Gramaj (g)", min_value=0.0, step=1.0, key="ret_gram")
+            pret_new  = st.number_input("Preț vânzare (RON)", min_value=0.0, step=0.5, key="ret_pret")
+            if st.button("Adaugă →", type="primary", key="btn_ret_add"):
+                if prep_new and ing_new and gram_new > 0:
+                    sheets_append("Retetar", [[prep_new, ing_new, str(gram_new), str(pret_new)]])
+                    st.success(f"✓ Ingredientul adăugat în rețetar.")
+                    st.rerun()
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  TAB 6 — SETĂRI
+# ═════════════════════════════════════════════════════════════════════════════
+with tab_setari:
+    st.markdown('<p class="mia-eyebrow">Configurare</p>', unsafe_allow_html=True)
+    st.markdown('<h1 class="mia-title">Setări & Cheltuieli</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="mia-subtitle">Parametrii financiari folosiți în cascadă și simulator.</p>',
+                unsafe_allow_html=True)
+
+    cfg_set = citeste_config()
+
+    col_sa, col_sb = st.columns(2)
+    with col_sa:
+        st.markdown('<div class="mia-card">', unsafe_allow_html=True)
+        st.markdown(f'<div class="mia-eyebrow" style="margin-bottom:1rem;">Fiscal</div>',
+                    unsafe_allow_html=True)
+        regim_opts = {"Microîntreprindere 1%": "micro1",
+                      "Microîntreprindere 3%": "micro3",
+                      "Impozit pe profit 16%": "profit16"}
+        regim_sel  = st.selectbox("Regim fiscal",
+                                   list(regim_opts.keys()),
+                                   index=list(regim_opts.values()).index(
+                                       str(cfg_set.get("regim_fiscal","micro1"))
+                                   ) if cfg_set.get("regim_fiscal","micro1") in regim_opts.values() else 0)
+        tva_opts = {"TVA 9% (restaurante)": 0.09, "TVA 19% (standard)": 0.19}
+        tva_sel  = st.selectbox("Cotă TVA", list(tva_opts.keys()),
+                                 index=0 if _f(cfg_set.get("cota_tva",0.09)) == 0.09 else 1)
+        div_opts = {"Dividende 8%": 0.08, "Dividende 10%": 0.10}
+        div_sel  = st.selectbox("Impozit dividende", list(div_opts.keys()),
+                                 index=0 if _f(cfg_set.get("cota_dividend",0.08)) == 0.08 else 1)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    with col_s2:
-        st.markdown('<div class="lana-card">', unsafe_allow_html=True)
-        st.markdown('<div class="lana-eyebrow" style="margin-bottom:1rem;">Cheltuieli Lunare Fixe (RON)</div>',
+    with col_sb:
+        st.markdown('<div class="mia-card">', unsafe_allow_html=True)
+        st.markdown(f'<div class="mia-eyebrow" style="margin-bottom:1rem;">Cheltuieli Lunare</div>',
                     unsafe_allow_html=True)
-        chirie    = st.number_input("Chirie lunară",   value=_f(cfg.get("chirie_lunara",0)),
-                                    min_value=0.0, step=100.0, format="%.2f")
-        salarii   = st.number_input("Salarii lunare",  value=_f(cfg.get("salarii_lunare",0)),
-                                    min_value=0.0, step=100.0, format="%.2f")
-        utilitati = st.number_input("Utilități lunare",value=_f(cfg.get("utilitati_lunare",0)),
-                                    min_value=0.0, step=100.0, format="%.2f")
+        chirie    = st.number_input("Chirie lunară (RON)", value=_f(cfg_set.get("chirie_lunara",0)),
+                                     min_value=0.0, step=100.0)
+        salarii   = st.number_input("Salarii lunare (RON)", value=_f(cfg_set.get("salarii_lunare",0)),
+                                     min_value=0.0, step=100.0)
+        utilitati = st.number_input("Utilități lunare (RON)", value=_f(cfg_set.get("utilitati_lunare",0)),
+                                     min_value=0.0, step=50.0)
+        nr_clienti= st.number_input("Nr. clienți/lună (estimat)", value=int(_f(cfg_set.get("nr_clienti_lunar",500))),
+                                     min_value=1, step=10)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    nr_clienti = st.number_input("Nr. estimat clienți / bonuri pe lună",
-                                  value=int(_f(cfg.get("nr_clienti_lunar",500))),
-                                  min_value=1, step=10)
-    total_fixe = chirie + salarii + utilitati
-    regie_bon  = total_fixe / nr_clienti if nr_clienti > 0 else 0
-
+    # Preview
+    fixe_zi   = (chirie + salarii + utilitati) / 30.0
+    regie_bon = fixe_zi / max(nr_clienti / 30, 1)
     st.markdown(f"""
-    <div class="lana-card-sm" style="display:inline-block;margin-top:0.5rem;">
-        <span style="font-size:0.8rem;color:#8e8e93;">Regie fixă per bon: </span>
-        <span style="font-size:1.1rem;font-weight:700;color:#0a84ff;">{regie_bon:.2f} RON</span>
-        <span style="font-size:0.78rem;color:#48484a;"> / client</span>
+    <div class="mia-card-sm animate-in" style="border-color:{MIA_PURPLE_MID};">
+        <span style="font-size:0.8rem;color:{MIA_MUTED};">Cheltuieli fixe / zi: </span>
+        <span style="font-size:1.1rem;font-weight:700;color:{MIA_PURPLE};">{fixe_zi:.2f} RON</span>
+        &nbsp;&nbsp;
+        <span style="font-size:0.8rem;color:{MIA_MUTED};">Regie per bon: </span>
+        <span style="font-size:1.1rem;font-weight:700;color:{MIA_PURPLE};">{regie_bon:.2f} RON</span>
     </div>""", unsafe_allow_html=True)
 
     st.markdown("<div style='height:0.75rem;'></div>", unsafe_allow_html=True)
@@ -1357,80 +1549,65 @@ with tab_setari:
             "utilitati_lunare":utilitati,
             "nr_clienti_lunar":nr_clienti,
         })
-        st.success("✓ Configurația a fost salvată în Google Sheets.")
+        st.success("✓ Configurația a fost salvată.")
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  TAB 5 — SIMULATOR  (preț manual + slider)
+#  TAB 7 — SIMULATOR
 # ═════════════════════════════════════════════════════════════════════════════
 with tab_sim:
-    st.markdown('<p class="lana-eyebrow">Analiză profitabilitate</p>', unsafe_allow_html=True)
-    st.markdown('<h1 class="lana-title">Simulator</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="lana-subtitle">Testează un preparat nou înainte de a-l introduce în meniu.</p>',
+    st.markdown('<p class="mia-eyebrow">Analiză profitabilitate</p>', unsafe_allow_html=True)
+    st.markdown('<h1 class="mia-title">Simulator Preparat</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="mia-subtitle">Testează profitabilitatea unui preparat nou înainte de a-l introduce în meniu.</p>',
                 unsafe_allow_html=True)
 
-    cfg_sim  = citeste_config()
-    stoc_sim = citeste_stoc()
-    produse_stoc = sorted(stoc_sim["Produs"].dropna().unique().tolist()) if not stoc_sim.empty else []
+    cfg_sim   = citeste_config()
+    stoc_sim  = citeste_stoc()
+    produse_s = sorted(stoc_sim["Produs"].dropna().unique().tolist()) if not stoc_sim.empty else []
 
     col_s1, col_s2 = st.columns(2)
     with col_s1:
-        nume_prep = st.text_input("Nume preparat", placeholder="ex: Burger clasic")
+        nume_prep = st.text_input("Nume preparat", placeholder="ex: Burger Clasic")
     with col_s2:
-        pret_vz = st.number_input(
-            "Preț vânzare (cu TVA) · RON",
-            min_value=0.0, step=0.5, format="%.2f",
-            help="Introdu prețul direct sau ajustează cu sliderul de mai jos"
-        )
+        pret_vz = st.number_input("Preț vânzare (cu TVA) · RON", min_value=0.0, step=0.5, format="%.2f")
 
-    # Slider + input manual sincronizat
-    st.markdown('<div class="lana-eyebrow" style="margin-top:0.25rem;">Ajustare rapidă preț</div>',
+    st.markdown(f'<div class="mia-eyebrow" style="margin-top:0.25rem;">Ajustare rapidă preț</div>',
                 unsafe_allow_html=True)
-    slider_min = max(1.0, pret_vz - 20) if pret_vz > 0 else 1.0
-    slider_max = pret_vz + 40 if pret_vz > 0 else 100.0
-    slider_val = float(pret_vz) if pret_vz > 0 else 20.0
-    pret_slider = st.slider(
-        "Preț slider (RON)",
-        min_value=slider_min,
-        max_value=slider_max,
-        value=slider_val,
-        step=0.5,
-        label_visibility="collapsed"
-    )
-    # Prețul activ = cel mai mare dintre input manual și slider, dacă diferă
-    # Logică: dacă utilizatorul a setat manual un preț > 0, îl folosim; altfel sliderul
-    pret_calc = pret_vz if pret_vz > 0 and abs(pret_vz - slider_val) > 0.01 else pret_slider
+    sl_min = max(1.0, pret_vz - 20) if pret_vz > 0 else 1.0
+    sl_max = pret_vz + 40 if pret_vz > 0 else 100.0
+    sl_val = float(pret_vz) if pret_vz > 0 else 20.0
+    pret_slider = st.slider("Preț", min_value=sl_min, max_value=sl_max, value=sl_val,
+                             step=0.5, label_visibility="collapsed")
+    pret_calc = pret_vz if pret_vz > 0 and abs(pret_vz - sl_val) > 0.01 else pret_slider
 
     st.markdown(f"""
-    <div style="font-size:0.82rem;color:#636366;margin-bottom:1rem;">
-        Preț activ: <strong style="color:#0a84ff;font-size:1rem;">{pret_calc:.2f} RON</strong>
+    <div style="font-size:0.82rem;color:{MIA_MUTED};margin-bottom:1rem;">
+        Preț activ: <strong style="color:{MIA_PURPLE};font-size:1rem;">{pret_calc:.2f} RON</strong>
         &nbsp;·&nbsp;
-        <span style="color:#48484a;">Modifică numărul de sus sau trage sliderul</span>
+        <span style="color:{MIA_FAINT};">Modifică sus sau trage sliderul</span>
     </div>""", unsafe_allow_html=True)
 
-    nr_ing = st.number_input("Număr ingrediente", min_value=1, max_value=20, value=3, step=1)
-    st.markdown('<div class="lana-eyebrow" style="margin-top:0.5rem;margin-bottom:0.8rem;">Ingrediente & Gramaje</div>',
+    nr_ing = st.number_input("Nr. ingrediente", min_value=1, max_value=20, value=3, step=1)
+    st.markdown(f'<div class="mia-eyebrow" style="margin-top:0.5rem;margin-bottom:0.8rem;">Ingrediente & Gramaje</div>',
                 unsafe_allow_html=True)
 
     ingrediente_sim = []
     for i in range(int(nr_ing)):
-        col_a, col_b = st.columns([2.5, 1])
-        with col_a:
-            if produse_stoc:
-                ing = st.selectbox("Ingredient",["— alege —"] + produse_stoc, key=f"si_{i}")
+        ca, cb = st.columns([2.5, 1])
+        with ca:
+            if produse_s:
+                ing = st.selectbox("Ingredient", ["— alege —"] + produse_s, key=f"si_{i}")
             else:
                 ing = st.text_input("Ingredient", key=f"si_{i}", placeholder="Ingredient")
-        with col_b:
+        with cb:
             gram = st.number_input("Gramaj (g)", min_value=0.0, step=1.0, key=f"sg_{i}")
         if ing and ing != "— alege —" and gram > 0:
             ingrediente_sim.append({"ingredient": ing, "gramaj_g": gram})
 
-    st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
-
     if ingrediente_sim and pret_calc > 0:
-        stoc_idx = {str(r.get("Produs","")).lower().strip(): _f(r.get("Pret_Unitar",0))
-                    for _, r in stoc_sim.iterrows()}
+        stoc_idx_sim = {str(r.get("Produs","")).lower().strip(): _f(r.get("Pret_Unitar",0))
+                        for _, r in stoc_sim.iterrows()}
         fc_sim = sum(
-            (x["gramaj_g"] / 1000.0) * stoc_idx.get(x["ingredient"].lower().strip(), 0.0)
+            (x["gramaj_g"] / 1000.0) * stoc_idx_sim.get(x["ingredient"].lower().strip(), 0.0)
             for x in ingrediente_sim
         )
         nr_cl   = _f(cfg_sim.get("nr_clienti_lunar", 500))
@@ -1448,78 +1625,78 @@ with tab_sim:
             marja = c_sim["marja_neta"]
             if marja < 10:
                 cota_tva  = _f(cfg_sim.get("cota_tva", 0.09))
-                regim_s   = cfg_sim.get("regim_fiscal","micro1")
-                ci_s      = {"micro1":0.01,"micro3":0.03,"profit16":0.16}.get(str(regim_s),0.01)
+                ci_s      = {"micro1":0.01,"micro3":0.03,"profit16":0.16}.get(
+                    str(cfg_sim.get("regim_fiscal","micro1")), 0.01)
                 cd_s      = _f(cfg_sim.get("cota_dividend", 0.08))
                 factor    = (1 - ci_s) * (1 - cd_s)
                 pret_rec  = (((fc_sim + regie_s) / (factor * 0.8)) * (1 + cota_tva)
                              if factor > 0 else (fc_sim + regie_s) * 3)
                 st.markdown(f"""
-                <div class="lana-card-sm animate-in" style="border-color:#ff453a;">
-                    <div style="font-size:0.95rem;font-weight:600;color:#ff453a;margin-bottom:0.5rem;">
+                <div class="mia-card-sm animate-in" style="border-color:#FECACA;">
+                    <div style="font-size:0.95rem;font-weight:700;color:{MIA_RED};margin-bottom:0.5rem;">
                         ⚠ Marjă insuficientă ({marja:.1f}%)
                     </div>
-                    <div style="font-size:0.85rem;color:#8e8e93;line-height:1.6;">
+                    <div style="font-size:0.85rem;color:{MIA_MUTED};line-height:1.6;">
                         Ajustează prețul sau reduce ingredientele costisitoare.<br>
-                        <strong style="color:#f5f5f7;">Preț recomandat pentru marjă 20%:</strong><br>
-                        <span style="font-size:1.1rem;font-weight:700;color:#ff453a;">{pret_rec:.2f} RON</span>
+                        <strong style="color:{MIA_TEXT};">Preț recomandat (marjă 20%):</strong><br>
+                        <span style="font-size:1.1rem;font-weight:700;color:{MIA_RED};">{pret_rec:.2f} RON</span>
                     </div>
                 </div>""", unsafe_allow_html=True)
             elif marja <= 20:
                 st.markdown(f"""
-                <div class="lana-card-sm animate-in" style="border-color:#ff9f0a;">
-                    <div style="font-size:0.95rem;font-weight:600;color:#ff9f0a;margin-bottom:0.5rem;">
+                <div class="mia-card-sm animate-in" style="border-color:#FDE68A;">
+                    <div style="font-size:0.95rem;font-weight:700;color:{MIA_AMBER};margin-bottom:0.5rem;">
                         ℹ Marjă acceptabilă ({marja:.1f}%)
                     </div>
-                    <div style="font-size:0.85rem;color:#8e8e93;line-height:1.6;">
-                        Există loc de optimizare. Caută furnizori mai competitivi pentru ingredientele cheie.
+                    <div style="font-size:0.85rem;color:{MIA_MUTED};line-height:1.6;">
+                        Există loc de optimizare. Caută furnizori mai competitivi.
                     </div>
                 </div>""", unsafe_allow_html=True)
             else:
                 st.markdown(f"""
-                <div class="lana-card-sm animate-in" style="border-color:#30d158;">
-                    <div style="font-size:0.95rem;font-weight:600;color:#30d158;margin-bottom:0.5rem;">
+                <div class="mia-card-sm animate-in" style="border-color:#A7F3D0;">
+                    <div style="font-size:0.95rem;font-weight:700;color:{MIA_GREEN};margin-bottom:0.5rem;">
                         ✓ Marjă excelentă ({marja:.1f}%)
                     </div>
-                    <div style="font-size:0.85rem;color:#8e8e93;line-height:1.6;">
+                    <div style="font-size:0.85rem;color:{MIA_MUTED};line-height:1.6;">
                         Preparatul este viabil comercial. Îl poți introduce cu încredere în meniu.
                     </div>
                 </div>""", unsafe_allow_html=True)
 
             st.markdown(f"""
-            <div class="lana-card-sm animate-in animate-in-delay-1" style="margin-top:0.75rem;">
-                <div class="lana-eyebrow" style="margin-bottom:0.75rem;">Detalii calcul</div>
+            <div class="mia-card-sm animate-in animate-in-delay-1" style="margin-top:0.75rem;">
+                <div class="mia-eyebrow" style="margin-bottom:0.75rem;">Detalii calcul</div>
                 <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.86rem;">
-                    <span style="color:#8e8e93;">Food cost ingrediente</span>
-                    <span style="color:#f5f5f7;font-weight:500;">{fc_sim:.2f} RON</span>
+                    <span style="color:{MIA_MUTED};">Food cost ingrediente</span>
+                    <span style="color:{MIA_TEXT};font-weight:500;">{fc_sim:.2f} RON</span>
                 </div>
                 <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.86rem;">
-                    <span style="color:#8e8e93;">Regie fixă / client</span>
-                    <span style="color:#f5f5f7;font-weight:500;">{regie_s:.2f} RON</span>
+                    <span style="color:{MIA_MUTED};">Regie fixă / client</span>
+                    <span style="color:{MIA_TEXT};font-weight:500;">{regie_s:.2f} RON</span>
                 </div>
                 <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.86rem;">
-                    <span style="color:#8e8e93;">Preț vânzare activ</span>
-                    <span style="color:#0a84ff;font-weight:600;">{pret_calc:.2f} RON</span>
+                    <span style="color:{MIA_MUTED};">Preț vânzare activ</span>
+                    <span style="color:{MIA_PURPLE};font-weight:700;">{pret_calc:.2f} RON</span>
                 </div>
             </div>""", unsafe_allow_html=True)
     else:
-        st.markdown("""
-        <div class="lana-card-sm" style="text-align:center;padding:2rem;border-style:dashed;">
+        st.markdown(f"""
+        <div class="mia-card-sm" style="text-align:center;padding:2rem;border-style:dashed;">
             <div style="font-size:1.8rem;margin-bottom:0.5rem;">🧮</div>
-            <div style="font-size:0.88rem;color:#8e8e93;">
-                Adaugă cel puțin un ingredient și setează un preț pentru a vedea simularea.
+            <div style="font-size:0.88rem;color:{MIA_MUTED};">
+                Adaugă cel puțin un ingredient și setează un preț.
             </div>
         </div>""", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FOOTER
 # ─────────────────────────────────────────────────────────────────────────────
-st.markdown("""
+st.markdown(f"""
 <div style="text-align:center;padding:2.5rem 0 1.5rem;
-    border-top:1px solid #2c2c2e;margin-top:3rem;">
-    <span style="font-size:0.8rem;color:#48484a;">
-        ◈ <strong style="color:#636366;">Lana Advisory</strong>
-        &nbsp;·&nbsp; Consultantul tău digital de buzunar
+    border-top:1px solid {MIA_BORDER};margin-top:3rem;">
+    <span style="font-size:0.8rem;color:{MIA_FAINT};">
+        ✦ <strong style="color:{MIA_PURPLE};">MIA</strong>
+        &nbsp;·&nbsp; Restaurant Intelligence
         &nbsp;·&nbsp; Powered by Gemini AI
     </span>
 </div>
