@@ -10,8 +10,12 @@ import pandas as pd
 import json, base64, io, time, urllib.request, urllib.parse, urllib.error
 from datetime import datetime, date
 from PIL import Image
-import plotly.graph_objects as go
-import plotly.express as px
+# Plotly opțional — grafice cu HTML pur dacă nu e disponibil
+try:
+    import plotly.graph_objects as go
+    HAS_PLOTLY = True
+except ImportError:
+    HAS_PLOTLY = False
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIG PAGINĂ — primul apel Streamlit, înainte de orice altceva
@@ -627,88 +631,115 @@ def bon_fiscal(c: dict, titlu: str = "SIMULARE"):
     </div>""", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# GRAFICE PLOTLY — temă MIA
+# GRAFICE — HTML/CSS pur, zero dependențe externe
 # ─────────────────────────────────────────────────────────────────────────────
-def _plotly_layout(title: str = "") -> dict:
-    return dict(
-        title=dict(text=title, font=dict(family="Inter", size=13, color=TEXT), x=0, xanchor="left"),
-        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Inter", color=MUTED, size=11),
-        margin=dict(l=0, r=0, t=36 if title else 10, b=0),
-        xaxis=dict(showgrid=False, zeroline=False, showline=False, color=MUTED),
-        yaxis=dict(showgrid=True, gridcolor="#F3F4F6", zeroline=False, color=MUTED),
-        legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=11)),
-        hoverlabel=dict(bgcolor=SURF, bordercolor=BORD, font_family="Inter"),
-    )
 
-def graf_vanzari_7zile(vanzari_df: pd.DataFrame, retetar_df: pd.DataFrame):
-    """Grafic vânzări brute pe ultimele 7 zile."""
+def _graf_vanzari_html(vanzari_df: pd.DataFrame, retetar_df: pd.DataFrame) -> str | None:
+    """Bar chart vânzări 7 zile — HTML/CSS pur."""
     if vanzari_df.empty or retetar_df.empty:
         return None
     pret_idx = {str(r["Preparat"]).lower().strip(): _f(r["Pret_Vanzare"])
                 for _, r in retetar_df.iterrows()}
-    vanzari_df = vanzari_df.copy()
-    vanzari_df["Data_dt"] = pd.to_datetime(vanzari_df["Data"], errors="coerce")
-    vanzari_df["Valoare"] = vanzari_df.apply(
+    df = vanzari_df.copy()
+    df["Data_dt"] = pd.to_datetime(df["Data"], errors="coerce")
+    df["Valoare"] = df.apply(
         lambda r: _f(r["Cantitate_Vanduta"]) * pret_idx.get(str(r["Preparat"]).lower().strip(), 0), axis=1)
-    zilnic = vanzari_df.groupby("Data_dt")["Valoare"].sum().reset_index().sort_values("Data_dt").tail(7)
+    zilnic = (df.groupby(df["Data_dt"].dt.date)["Valoare"]
+              .sum().reset_index().sort_values("Data_dt").tail(7))
     if zilnic.empty:
         return None
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=zilnic["Data_dt"].dt.strftime("%d %b"),
-        y=zilnic["Valoare"],
-        marker_color=P,
-        marker_line_width=0,
-        hovertemplate="%{x}<br><b>%{y:,.2f} RON</b><extra></extra>",
-    ))
-    fig.update_layout(**_plotly_layout("Vânzări brute · ultimele 7 zile"))
-    fig.update_traces(marker_opacity=0.85)
-    return fig
+    max_val = max(zilnic["Valoare"].max(), 1)
+    bars = ""
+    for _, row in zilnic.iterrows():
+        pct   = row["Valoare"] / max_val * 100
+        label = row["Data_dt"].strftime("%d %b") if hasattr(row["Data_dt"], "strftime") else str(row["Data_dt"])
+        bars += f"""
+        <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.55rem;">
+            <div style="font-size:0.72rem;color:{MUTED};width:42px;text-align:right;flex-shrink:0;">{label}</div>
+            <div style="flex:1;background:#F3F4F6;border-radius:4px;height:22px;overflow:hidden;">
+                <div style="width:{pct:.1f}%;background:{P};height:100%;border-radius:4px;
+                    display:flex;align-items:center;padding-left:8px;transition:width 0.6s ease;">
+                    <span style="font-size:0.7rem;font-weight:600;color:#fff;white-space:nowrap;">
+                        {row['Valoare']:,.0f} RON
+                    </span>
+                </div>
+            </div>
+        </div>"""
+    return f"""
+    <div class="card fade-in" style="padding:1.4rem 1.6rem;">
+        <div class="eyebrow" style="margin-bottom:1rem;">Vânzări brute · ultimele 7 zile</div>
+        {bars}
+    </div>"""
 
-def graf_top_preparate(vanzari_df: pd.DataFrame):
-    """Top preparate după cantitate vândută."""
+def _graf_top_preparate_html(vanzari_df: pd.DataFrame) -> str | None:
+    """Bar chart orizontal top preparate — HTML/CSS pur."""
     if vanzari_df.empty:
         return None
     top = (vanzari_df.groupby("Preparat")["Cantitate_Vanduta"]
            .apply(lambda x: sum(_f(v) for v in x))
            .reset_index()
-           .sort_values("Cantitate_Vanduta", ascending=True)
-           .tail(8))
+           .sort_values("Cantitate_Vanduta", ascending=False)
+           .head(7))
     if top.empty:
         return None
-    fig = go.Figure(go.Bar(
-        x=top["Cantitate_Vanduta"], y=top["Preparat"],
-        orientation="h", marker_color=P_MID,
-        marker_line_color=P, marker_line_width=1,
-        hovertemplate="%{y}<br><b>%{x:.0f} buc</b><extra></extra>",
-    ))
-    fig.update_layout(**_plotly_layout("Top preparate vândute"))
-    fig.update_layout(yaxis=dict(showgrid=False))
-    return fig
+    max_val = max(top["Cantitate_Vanduta"].max(), 1)
+    bars = ""
+    for _, row in top.iterrows():
+        pct  = row["Cantitate_Vanduta"] / max_val * 100
+        name = str(row["Preparat"])[:28]
+        bars += f"""
+        <div style="margin-bottom:0.55rem;">
+            <div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:3px;">
+                <span style="color:{TEXT};font-weight:500;">{name}</span>
+                <span style="color:{MUTED};">{row['Cantitate_Vanduta']:.0f} buc</span>
+            </div>
+            <div style="background:#F3F4F6;border-radius:4px;height:10px;overflow:hidden;">
+                <div style="width:{pct:.1f}%;background:{P_MID};border-left:3px solid {P};height:100%;border-radius:4px;"></div>
+            </div>
+        </div>"""
+    return f"""
+    <div class="card fade-in" style="padding:1.4rem 1.6rem;">
+        <div class="eyebrow" style="margin-bottom:1rem;">Top preparate vândute</div>
+        {bars}
+    </div>"""
 
-def graf_food_cost_pie(c: dict):
-    """Distribuție cheltuieli."""
-    labels = ["Food Cost", "Cheltuieli Fixe", "Taxe", "Profit Net"]
-    values = [
-        max(c["food_cost"], 0),
-        max(c["cheltuieli_fixe_zilnice"], 0),
-        max(c["impozit_firma"] + c["impozit_dividend"] + c["tva_colectat"], 0),
-        max(c["profit_net_real"], 0),
+def _graf_cheltuieli_html(c: dict) -> str | None:
+    """Mini donut chart cheltuieli — HTML/CSS pur (segmente colorate)."""
+    total = c["vanzari_brute"]
+    if total <= 0:
+        return None
+    segmente = [
+        ("Food Cost",        max(c["food_cost"], 0),                                              AMBER),
+        ("Cheltuieli fixe",  max(c["cheltuieli_fixe_zilnice"], 0),                                BLUE),
+        ("Taxe",             max(c["impozit_firma"] + c["impozit_dividend"] + c["tva_colectat"], 0), RED),
+        ("Profit net",       max(c["profit_net_real"], 0),                                        GREEN),
     ]
-    colors = [AMBER, BLUE, RED, GREEN]
-    fig = go.Figure(go.Pie(
-        labels=labels, values=values, hole=0.52,
-        marker=dict(colors=colors, line=dict(color=SURF, width=2)),
-        textfont=dict(family="Inter", size=11),
-        hovertemplate="%{label}<br><b>%{value:.2f} RON</b> (%{percent})<extra></extra>",
-    ))
-    fig.update_layout(
-        **_plotly_layout("Structură cheltuieli · azi"),
-        showlegend=True,
-        legend=dict(orientation="v", x=1, y=0.5),
-    )
-    return fig
+    randuri = ""
+    for label, val, color in segmente:
+        pct = val / total * 100
+        randuri += f"""
+        <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem;">
+            <div style="width:10px;height:10px;border-radius:2px;background:{color};flex-shrink:0;"></div>
+            <div style="flex:1;">
+                <div style="display:flex;justify-content:space-between;font-size:0.8rem;margin-bottom:2px;">
+                    <span style="color:{MUTED};">{label}</span>
+                    <span style="color:{TEXT};font-weight:600;">{val:,.2f} RON <span style="color:{FAINT};font-weight:400;">({pct:.1f}%)</span></span>
+                </div>
+                <div style="background:#F3F4F6;border-radius:4px;height:8px;overflow:hidden;">
+                    <div style="width:{pct:.1f}%;background:{color};height:100%;border-radius:4px;opacity:0.8;"></div>
+                </div>
+            </div>
+        </div>"""
+    return f"""
+    <div class="card fade-in" style="padding:1.4rem 1.6rem;">
+        <div class="eyebrow" style="margin-bottom:1rem;">Structura cheltuielilor · azi</div>
+        {randuri}
+        <div style="border-top:1px solid {BORD};margin-top:0.75rem;padding-top:0.75rem;
+            display:flex;justify-content:space-between;font-size:0.82rem;">
+            <span style="color:{MUTED};">Total încasări brute</span>
+            <span style="font-weight:700;color:{P};">{total:,.2f} RON</span>
+        </div>
+    </div>"""
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TABS PRINCIPALE
@@ -792,20 +823,16 @@ with tab_dash:
     # ── Grafice ──
     col_g1, col_g2 = st.columns(2)
     with col_g1:
-        fig_vz = graf_vanzari_7zile(vanzari_df, retetar_df)
-        if fig_vz:
-            st.markdown('<div class="card fade-in" style="padding:1.2rem 1.5rem;">', unsafe_allow_html=True)
-            st.plotly_chart(fig_vz, use_container_width=True, config={"displayModeBar": False})
-            st.markdown('</div>', unsafe_allow_html=True)
+        html_vz = _graf_vanzari_html(vanzari_df, retetar_df)
+        if html_vz:
+            st.markdown(html_vz, unsafe_allow_html=True)
         else:
             st.markdown(f'<div class="card" style="text-align:center;padding:2rem;color:{MUTED};font-size:0.88rem;">📈 Date insuficiente pentru grafic vânzări</div>', unsafe_allow_html=True)
 
     with col_g2:
-        fig_pie = graf_food_cost_pie(c)
-        if fig_pie and c["vanzari_brute"] > 0:
-            st.markdown('<div class="card fade-in" style="padding:1.2rem 1.5rem;">', unsafe_allow_html=True)
-            st.plotly_chart(fig_pie, use_container_width=True, config={"displayModeBar": False})
-            st.markdown('</div>', unsafe_allow_html=True)
+        html_ch = _graf_cheltuieli_html(c)
+        if html_ch and c["vanzari_brute"] > 0:
+            st.markdown(html_ch, unsafe_allow_html=True)
         else:
             st.markdown(f'<div class="card" style="text-align:center;padding:2rem;color:{MUTED};font-size:0.88rem;">🥧 Fără vânzări azi — nu există date pentru grafic</div>', unsafe_allow_html=True)
 
@@ -836,11 +863,9 @@ with tab_dash:
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col_r:
-        fig_top = graf_top_preparate(vanzari_df)
-        if fig_top:
-            st.markdown('<div class="card fade-in" style="padding:1.2rem 1.5rem;">', unsafe_allow_html=True)
-            st.plotly_chart(fig_top, use_container_width=True, config={"displayModeBar": False})
-            st.markdown('</div>', unsafe_allow_html=True)
+        html_top = _graf_top_preparate_html(vanzari_df)
+        if html_top:
+            st.markdown(html_top, unsafe_allow_html=True)
         else:
             st.markdown(f'<div class="card" style="text-align:center;padding:2rem;color:{MUTED};font-size:0.88rem;">📊 Nicio vânzare înregistrată încă</div>', unsafe_allow_html=True)
 
