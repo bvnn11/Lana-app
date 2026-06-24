@@ -46,7 +46,11 @@ AMBER  = "#D97706"
 BLUE   = "#2563EB"
 
 SHEETS_BASE = "https://sheets.googleapis.com/v4/spreadsheets"
-GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash"
+# gemini-1.5-flash a fost retras definitiv de Google (404 pentru toată lumea, din 2025).
+# gemini-2.5-flash e modelul curent recomandat, suportă imagini, activ cel puțin până în oct. 2026.
+# Când vrei să treci la cel mai nou model, schimbă aici în "gemini-3.5-flash".
+GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_BASE  = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}"
 
 UNITATI = ["kg", "g", "l", "ml", "buc"]
 
@@ -363,58 +367,78 @@ def get_token() -> str:
 def _sid() -> str:
     return st.secrets["spreadsheet_id"]
 
-def sheets_get(rng: str) -> list:
+def sheets_get(rng: str, max_retries: int = 4) -> list:
     token = get_token()
     url   = f"{SHEETS_BASE}/{_sid()}/values/{urllib.parse.quote(rng)}"
-    req   = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
-    try:
-        with urllib.request.urlopen(req) as r:
-            return json.loads(r.read()).get("values", [])
-    except Exception as e:
-        st.error(f"Eroare citire Sheet ({rng}): {e}")
-        return []
+    for attempt in range(max_retries):
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+        try:
+            with urllib.request.urlopen(req) as r:
+                return json.loads(r.read()).get("values", [])
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < max_retries - 1:
+                time.sleep(2 ** attempt)  # 1s, 2s, 4s, 8s
+                continue
+            st.error(f"Eroare citire Sheet ({rng}): HTTP {e.code} — {e.reason}")
+            return []
+        except Exception as e:
+            st.error(f"Eroare citire Sheet ({rng}): {e}")
+            return []
+    return []
 
-def sheets_clear_write(sheet: str, rows: list):
+def sheets_clear_write(sheet: str, rows: list, max_retries: int = 4):
     token = get_token()
     sid   = _sid()
-    # 1) clear
-    req = urllib.request.Request(
-        f"{SHEETS_BASE}/{sid}/values/{urllib.parse.quote(sheet)}:clear",
-        data=b"{}",
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        urllib.request.urlopen(req)
-    except Exception as e:
-        st.error(f"Eroare clear ({sheet}): {e}"); return
-    # 2) write
-    body = json.dumps({"values": rows}).encode()
-    req2 = urllib.request.Request(
-        f"{SHEETS_BASE}/{sid}/values/{urllib.parse.quote(sheet)}?valueInputOption=RAW",
-        data=body,
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        method="PUT",
-    )
-    try:
-        urllib.request.urlopen(req2)
-    except Exception as e:
-        st.error(f"Eroare scriere ({sheet}): {e}")
 
-def sheets_append(sheet: str, rows: list):
+    def _post_put(url, data, method):
+        for attempt in range(max_retries):
+            req = urllib.request.Request(
+                url, data=data,
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                method=method,
+            )
+            try:
+                urllib.request.urlopen(req)
+                return True
+            except urllib.error.HTTPError as e:
+                if e.code == 429 and attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)
+                    continue
+                st.error(f"Eroare {'clear' if method=='POST' else 'scriere'} ({sheet}): HTTP {e.code} — {e.reason}")
+                return False
+            except Exception as e:
+                st.error(f"Eroare {'clear' if method=='POST' else 'scriere'} ({sheet}): {e}")
+                return False
+        return False
+
+    if not _post_put(f"{SHEETS_BASE}/{sid}/values/{urllib.parse.quote(sheet)}:clear", b"{}", "POST"):
+        return
+    body = json.dumps({"values": rows}).encode()
+    _post_put(f"{SHEETS_BASE}/{sid}/values/{urllib.parse.quote(sheet)}?valueInputOption=RAW", body, "PUT")
+
+def sheets_append(sheet: str, rows: list, max_retries: int = 4):
     token = get_token()
     body  = json.dumps({"values": rows}).encode()
     url   = (f"{SHEETS_BASE}/{_sid()}/values/{urllib.parse.quote(sheet)}:append"
              f"?valueInputOption=RAW&insertDataOption=INSERT_ROWS")
-    req   = urllib.request.Request(
-        url, data=body,
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        urllib.request.urlopen(req)
-    except Exception as e:
-        st.error(f"Eroare append ({sheet}): {e}")
+    for attempt in range(max_retries):
+        req = urllib.request.Request(
+            url, data=body,
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            urllib.request.urlopen(req)
+            return
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+                continue
+            st.error(f"Eroare append ({sheet}): HTTP {e.code} — {e.reason}")
+            return
+        except Exception as e:
+            st.error(f"Eroare append ({sheet}): {e}")
+            return
 
 def _sheet_to_df(sheet: str, cols: list) -> pd.DataFrame:
     rows = sheets_get(sheet)
@@ -431,6 +455,7 @@ def _sheet_to_df(sheet: str, cols: list) -> pd.DataFrame:
 # ─────────────────────────────────────────────────────────────────────────────
 # CRUD
 # ─────────────────────────────────────────────────────────────────────────────
+@st.cache_data(ttl=20, show_spinner=False)
 def citeste_config() -> dict:
     rows = sheets_get("Config")
     cfg  = {}
@@ -442,8 +467,9 @@ def citeste_config() -> dict:
 
 def salveaza_config(cfg: dict):
     sheets_clear_write("Config", [["Cheie", "Valoare"]] + [[k, str(v)] for k, v in cfg.items()])
-    get_token.clear()
+    citeste_config.clear()
 
+@st.cache_data(ttl=20, show_spinner=False)
 def citeste_stoc() -> pd.DataFrame:
     return _sheet_to_df("Stoc", ["Produs", "Cantitate", "Unitate", "Pret_Unitar", "Data", "Stoc_Minim"])
 
@@ -456,13 +482,17 @@ def salveaza_stoc(df: pd.DataFrame):
             str(r.get("Data", "")), str(r.get("Stoc_Minim", 0)),
         ])
     sheets_clear_write("Stoc", rows)
+    citeste_stoc.clear()
 
+@st.cache_data(ttl=20, show_spinner=False)
 def citeste_vanzari() -> pd.DataFrame:
     return _sheet_to_df("Vanzari", ["Preparat", "Cantitate_Vanduta", "Data"])
 
 def salveaza_vanzari(rows_data: list):
     sheets_append("Vanzari", [[r["Preparat"], str(r["Cantitate_Vanduta"]), str(r["Data"])] for r in rows_data])
+    citeste_vanzari.clear()
 
+@st.cache_data(ttl=20, show_spinner=False)
 def citeste_retetar() -> pd.DataFrame:
     return _sheet_to_df("Retetar", ["Preparat", "Ingredient", "Gramaj", "Pret_Vanzare"])
 
@@ -472,12 +502,15 @@ def salveaza_retetar(df: pd.DataFrame):
         rows.append([str(r.get("Preparat", "")), str(r.get("Ingredient", "")),
                      str(r.get("Gramaj", 0)), str(r.get("Pret_Vanzare", 0))])
     sheets_clear_write("Retetar", rows)
+    citeste_retetar.clear()
 
+@st.cache_data(ttl=20, show_spinner=False)
 def citeste_facturi_log() -> pd.DataFrame:
     return _sheet_to_df("FacturiLog", ["Data", "Furnizor", "NrFactura", "Total", "Produse"])
 
 def salveaza_factura_log(data: str, furnizor: str, nr: str, total: float, produse_json: str):
     sheets_append("FacturiLog", [[data, furnizor, nr, str(total), produse_json]])
+    citeste_facturi_log.clear()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # UTILITARE
@@ -615,32 +648,53 @@ def cascada(vanzari_brute: float, food_cost: float, cfg: dict) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 # AI — GEMINI 1.5 FLASH
 # ─────────────────────────────────────────────────────────────────────────────
-def _gemini_call(img_bytes: bytes, prompt: str) -> dict | None:
-    try:
-        key     = st.secrets["GEMINI_API_KEY"]
-        b64_img = base64.b64encode(img_bytes).decode()
-        payload = json.dumps({"contents": [{"parts": [
-            {"inline_data": {"mime_type": "image/jpeg", "data": b64_img}},
-            {"text": prompt},
-        ]}]}).encode()
-        
-        url_complet = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
-        
-        req = urllib.request.Request(
-            url_complet, data=payload,
-            headers={"Content-Type": "application/json"}, method="POST",
-        )
-        with urllib.request.urlopen(req) as r:
-            result = json.loads(r.read())
-        raw = result["candidates"][0]["content"]["parts"][0]["text"].strip()
-        raw = raw.replace("```json", "").replace("```", "").strip()
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        st.error("Extragerea nu a returnat date valide. Încearcă cu o imagine mai clară.")
-        return None
-    except Exception as e:
-        st.error(f"Eroare Gemini: {e}")
-        return None
+def _gemini_call(img_bytes: bytes, prompt: str, max_retries: int = 3) -> dict | None:
+    key     = st.secrets["GEMINI_API_KEY"]
+    b64_img = base64.b64encode(img_bytes).decode()
+    payload = json.dumps({"contents": [{"parts": [
+        {"inline_data": {"mime_type": "image/jpeg", "data": b64_img}},
+        {"text": prompt},
+    ]}]}).encode()
+    url_complet = f"{GEMINI_BASE}:generateContent?key={key}"
+
+    for attempt in range(max_retries):
+        try:
+            req = urllib.request.Request(
+                url_complet, data=payload,
+                headers={"Content-Type": "application/json"}, method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=60) as r:
+                result = json.loads(r.read())
+            raw = result["candidates"][0]["content"]["parts"][0]["text"].strip()
+            raw = raw.replace("```json", "").replace("```", "").strip()
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            st.error("Extragerea nu a returnat date valide. Încearcă cu o imagine mai clară.")
+            return None
+        except urllib.error.HTTPError as e:
+            body = e.read().decode(errors="ignore")
+            if e.code == 404:
+                st.error(
+                    f"Eroare Gemini 404: modelul '{GEMINI_MODEL}' nu a fost găsit pentru cheia ta API. "
+                    "Verifică GEMINI_API_KEY în secrets (cheile Gemini valide începe cu 'AIzaSy') "
+                    "și că modelul nu a fost retras — vezi ai.google.dev/gemini-api/docs/deprecations."
+                )
+                return None
+            if e.code == 429 and attempt < max_retries - 1:
+                time.sleep(2 ** attempt)  # backoff: 1s, 2s
+                continue
+            if e.code == 429:
+                st.error("Eroare Gemini 429: prea multe cereri. Mai încearcă o dată în câteva secunde.")
+                return None
+            if e.code in (401, 403):
+                st.error(f"Eroare Gemini {e.code}: cheia API e invalidă, expirată sau fără permisiuni.")
+                return None
+            st.error(f"Eroare Gemini {e.code}: {body[:200]}")
+            return None
+        except Exception as e:
+            st.error(f"Eroare Gemini: {e}")
+            return None
+    return None
 
 def extrage_factura(img_bytes: bytes) -> dict | None:
     prompt = (
