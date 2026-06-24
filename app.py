@@ -1,6 +1,7 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 #  MIA · Restaurant Intelligence Platform
-#  v4 — rescris complet, fix cryptography + grafice
+#  v5 — zero dependențe externe (fără cryptography, fără plotly)
+#  RSA PKCS#1 v1.5 SHA-256 implementat în Python pur (stdlib only)
 #  Backend: Google Sheets API + Gemini 1.5 Flash
 #  Auth: st.secrets → gcp_service_account, spreadsheet_id, GEMINI_API_KEY
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -236,25 +237,109 @@ st.markdown(f"""
 def _b64u(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
 
+# ── RSA PKCS#1 v1.5 SHA-256 — implementare pură Python, zero dependențe ──────
+def _parse_pem_private_key(pem: str) -> tuple:
+    """
+    Parsează cheie privată RSA PEM (PKCS#8 sau PKCS#1) → (n, d, e).
+    Stdlib only: base64 + aritmetică DER manuală.
+    """
+    lines = pem.strip().splitlines()
+    b64   = "".join(l for l in lines if not l.startswith("-----"))
+    der   = base64.b64decode(b64)
+
+    def rd_len(buf, pos):
+        l = buf[pos]; pos += 1
+        if l < 0x80:
+            return l, pos
+        nb = l & 0x7F
+        val = 0
+        for _ in range(nb):
+            val = (val << 8) | buf[pos]; pos += 1
+        return val, pos
+
+    def rd_tag(buf, pos, tag):
+        assert buf[pos] == tag, f"Așteptat tag {tag:#04x} la {pos}, găsit {buf[pos]:#04x}"
+        pos += 1
+        l, pos = rd_len(buf, pos)
+        return pos, pos + l, l
+
+    def rd_int(buf, pos):
+        inner_start, inner_end, l = rd_tag(buf, pos, 0x02)
+        raw = buf[inner_start:inner_end]
+        return int.from_bytes(raw, "big"), inner_end
+
+    # Outer SEQUENCE
+    inner_start, outer_end, _ = rd_tag(der, 0, 0x30)
+    pos = inner_start
+
+    # Detectăm formatul:
+    # PKCS#1: SEQUENCE { INTEGER(version=0), INTEGER(n), INTEGER(e), INTEGER(d), ... }
+    # PKCS#8: SEQUENCE { INTEGER(version=0), SEQUENCE(algId), OCTET_STRING { RSAPrivateKey } }
+
+    # Primul element e întotdeauna version INTEGER
+    version, pos_after_ver = rd_int(der, pos)
+
+    # Al doilea element: dacă e 0x30 (SEQUENCE) → PKCS#8, dacă e 0x02 (INTEGER) → PKCS#1
+    if der[pos_after_ver] == 0x30:
+        # PKCS#8 — sari algorithmIdentifier SEQUENCE
+        alg_start, alg_end, alg_l = rd_tag(der, pos_after_ver, 0x30)
+        pos = alg_end
+        # OCTET STRING conține RSAPrivateKey (PKCS#1)
+        oct_start, oct_end, _ = rd_tag(der, pos, 0x04)
+        inner = der[oct_start:oct_end]
+        # Parsează PKCS#1 din inner
+        seq_start, _, _ = rd_tag(inner, 0, 0x30)
+        pos2 = seq_start
+        _ver, pos2 = rd_int(inner, pos2)   # version
+        n,    pos2 = rd_int(inner, pos2)
+        e,    pos2 = rd_int(inner, pos2)
+        d,    _    = rd_int(inner, pos2)
+    else:
+        # PKCS#1 direct (version deja citit)
+        pos = pos_after_ver
+        n, pos = rd_int(der, pos)
+        e, pos = rd_int(der, pos)
+        d, _   = rd_int(der, pos)
+
+    return n, d, e
+
+
+def _rsa_pkcs1_sha256_sign(msg: bytes, n: int, d: int) -> bytes:
+    """
+    RSA PKCS#1 v1.5 cu SHA-256 — implementare pură Python.
+    Compatibil cu Google OAuth2 RS256.
+    """
+    import hashlib
+    # DER prefix pentru SHA-256 DigestInfo (RFC 8017)
+    DER_SHA256 = bytes([
+        0x30, 0x31, 0x30, 0x0d, 0x06, 0x09,
+        0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01,
+        0x05, 0x00, 0x04, 0x20,
+    ])
+    digest  = hashlib.sha256(msg).digest()
+    T       = DER_SHA256 + digest
+    k       = (n.bit_length() + 7) // 8
+    ps_len  = k - len(T) - 3
+    assert ps_len >= 8, "Cheie RSA prea scurtă"
+    em      = b"\x00\x01" + b"\xff" * ps_len + b"\x00" + T
+    m       = int.from_bytes(em, "big")
+    s       = pow(m, d, n)
+    return s.to_bytes(k, "big")
+
+
 def _make_jwt(sa: dict) -> str:
-    """Construiește JWT semnat RS256 pentru Google OAuth2."""
-    from cryptography.hazmat.primitives.serialization import load_pem_private_key
-    from cryptography.hazmat.primitives import hashes
-    from cryptography.hazmat.primitives.asymmetric import padding as asym_padding
-
-    pem = sa["private_key"].strip().encode()
-    key = load_pem_private_key(pem, password=None)
-
+    """Construiește JWT semnat RS256 pentru Google OAuth2 — zero dependențe externe."""
+    n, d, e = _parse_pem_private_key(sa["private_key"])
     now = int(time.time())
     hdr = _b64u(json.dumps({"alg": "RS256", "typ": "JWT"}, separators=(",", ":")).encode())
     pld = _b64u(json.dumps({
         "iss": sa["client_email"], "sub": sa["client_email"],
         "scope": "https://www.googleapis.com/auth/spreadsheets",
         "aud":   "https://oauth2.googleapis.com/token",
-        "iat": now, "exp": now + 3600,
+        "iat":   now, "exp": now + 3600,
     }, separators=(",", ":")).encode())
     msg = f"{hdr}.{pld}".encode()
-    sig = key.sign(msg, asym_padding.PKCS1v15(), hashes.SHA256())
+    sig = _rsa_pkcs1_sha256_sign(msg, n, d)
     return f"{hdr}.{pld}.{_b64u(sig)}"
 
 @st.cache_resource(ttl=3000)
