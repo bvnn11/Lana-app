@@ -25,6 +25,17 @@ UNITATI_VALIDE = {
     "kg", "g", "l", "ml", "buc", "bucata", "bucăți",
     "bucati", "litri", "grame", "kilograme", "pcs", "piece"
 }
+
+def _strip_diacritics(s: str) -> str:
+    import unicodedata
+    s = unicodedata.normalize('NFD', s)
+    return ''.join(c for c in s if unicodedata.category(c) != 'Mn')
+
+_UNITATI_VALIDE_NORM = {_strip_diacritics(u.lower().strip()) for u in UNITATI_VALIDE}
+
+def unitate_valida(u: str) -> bool:
+    """Verifică o unitate de măsură ignorând diferențele de diacritice/case."""
+    return _strip_diacritics(str(u).lower().strip()) in _UNITATI_VALIDE_NORM
 SHEETS_BASE = "https://sheets.googleapis.com/v4/spreadsheets"
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
@@ -433,16 +444,12 @@ def _load_rsa_key_obj(pem: str):
     pem_bytes = pem.strip().encode("utf-8")
     return load_pem_private_key(pem_bytes, password=None)
 
-def _rsa_sign(msg: bytes, *args) -> bytes:
+def _rsa_sign(msg: bytes) -> bytes:
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.asymmetric import padding
     sa  = dict(st.secrets["gcp_service_account"])
     key = _load_rsa_key_obj(sa["private_key"])
     return key.sign(msg, padding.PKCS1v15(), hashes.SHA256())
-
-def _load_rsa_key(pem: str):
-    """Menținut pentru compatibilitate — returnează (0, 0) deoarece semnarea se face direct."""
-    return (0, 0)
 
 def b64u(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b'=').decode()
@@ -457,7 +464,7 @@ def _make_jwt(sa: dict) -> str:
         "iat": now, "exp": now + 3600,
     }, separators=(',',':')).encode())
     msg = f"{hdr}.{pld}".encode()
-    return f"{hdr}.{pld}.{b64u(_rsa_sign(msg, *_load_rsa_key(sa['private_key'])))}"
+    return f"{hdr}.{pld}.{b64u(_rsa_sign(msg))}"
 
 @st.cache_resource(ttl=3000)
 def get_access_token() -> str:
@@ -593,7 +600,7 @@ def calculeaza_food_cost(vanzari_df, retetar_df, stoc_df) -> float:
     for _, vrow in vanzari_df.iterrows():
         prep  = str(vrow.get("Preparat","")).lower().strip()
         cant  = _f(vrow.get("Cantitate_Vanduta",0))
-        ings  = retetar_df[retetar_df["Preparat"].str.lower().str.strip() == prep]
+        ings  = retetar_df[retetar_df["Preparat"].astype(str).str.lower().str.strip() == prep]
         for _, irow in ings.iterrows():
             kg    = _f(irow.get("Gramaj",0)) / 1000.0
             total += cant * kg * idx.get(str(irow.get("Ingredient","")).lower().strip(), 0.0)
@@ -724,7 +731,8 @@ def adauga_in_stoc(produse_list: list):
         dat = str(prod.get("Data", date.today().strftime("%Y-%m-%d")))
         sm  = _f(prod.get("Stoc_Minim", 0))
         if not nu: continue
-        mask = stoc_df["Produs"].str.lower().str.strip() == nu.lower().strip() if not stoc_df.empty else pd.Series([], dtype=bool)
+        mask = (stoc_df["Produs"].astype(str).str.lower().str.strip() == nu.lower().strip()
+                if not stoc_df.empty else pd.Series([], dtype=bool))
         if not stoc_df.empty and mask.any():
             idx2 = stoc_df[mask].index[0]
             # Adaugă cantitatea (nu înlocui) + actualizează prețul
@@ -747,12 +755,12 @@ def scade_stoc_din_vanzari(vanzari_input: list, retetar_df: pd.DataFrame):
     for v in vanzari_input:
         prep_v = str(v["Preparat"]).lower().strip()
         cant_v = _f(v["Cantitate_Vanduta"])
-        ings   = retetar_df[retetar_df["Preparat"].str.lower().str.strip() == prep_v]
+        ings   = retetar_df[retetar_df["Preparat"].astype(str).str.lower().str.strip() == prep_v]
         for _, irow in ings.iterrows():
             ing    = str(irow.get("Ingredient","")).lower().strip()
             gramaj = _f(irow.get("Gramaj",0)) / 1000.0
             consum = cant_v * gramaj
-            mask   = stoc_df["Produs"].str.lower().str.strip() == ing
+            mask   = stoc_df["Produs"].astype(str).str.lower().str.strip() == ing
             if mask.any():
                 idx3 = stoc_df[mask].index[0]
                 cur  = _f(stoc_df.at[idx3,"Cantitate"])
@@ -877,7 +885,7 @@ with tab_dash:
         for _, row in v_azi.iterrows():
             prep = str(row.get("Preparat","")).lower().strip()
             cant = _f(row.get("Cantitate_Vanduta",0))
-            m    = retetar_df[retetar_df["Preparat"].str.lower().str.strip() == prep]
+            m    = retetar_df[retetar_df["Preparat"].astype(str).str.lower().str.strip() == prep]
             if not m.empty:
                 vb += cant * _f(m.iloc[0].get("Pret_Vanzare",0))
 
@@ -1099,31 +1107,38 @@ with tab_facturi:
 
     if uploaded:
         img_bytes = uploaded.read()
-        col_img, col_act = st.columns([1, 2])
-        with col_img:
-            st.image(Image.open(io.BytesIO(img_bytes)), use_container_width=True, caption="Factură")
-        with col_act:
-            st.markdown('<div class="mia-card-sm">', unsafe_allow_html=True)
-            st.markdown(f'<div class="mia-eyebrow">Extragere automată date</div>', unsafe_allow_html=True)
-            st.markdown(
-                f'<p style="font-size:0.88rem;color:{MIA_MUTED};margin-bottom:1rem;">'
-                'Sistemul identifică furnizorul, numărul facturii, '
-                'produsele, cantitățile și prețurile unitare.</p>', unsafe_allow_html=True)
-            if st.button("🔍 Extrage date din factură", type="primary", key="btn_extrage_fact"):
-                with st.spinner("Gemini analizează factura…"):
-                    rez = extrage_factura_ai(img_bytes)
-                    if rez and "produse" in rez:
-                        st.session_state.produse_factura = rez["produse"]
-                        st.session_state.meta_factura = {
-                            "furnizor": rez.get("furnizor",""),
-                            "nr_factura": rez.get("nr_factura",""),
-                            "data": rez.get("data", date.today().strftime("%Y-%m-%d")),
-                            "total": rez.get("total", 0.0),
-                        }
-                        st.success(f"✓ {len(rez['produse'])} produse identificate.")
-                    else:
-                        st.session_state.produse_factura = []
-            st.markdown('</div>', unsafe_allow_html=True)
+        try:
+            img_preview = Image.open(io.BytesIO(img_bytes))
+        except Exception:
+            st.error("Fișierul nu este o imagine validă. Încearcă alt JPG/PNG/WEBP.")
+            img_preview = None
+        if img_preview is not None:
+            col_img, col_act = st.columns([1, 2])
+            with col_img:
+                st.image(img_preview, use_container_width=True, caption="Factură")
+            with col_act:
+                st.markdown('<div class="mia-card-sm">', unsafe_allow_html=True)
+                st.markdown(f'<div class="mia-eyebrow">Extragere automată date</div>', unsafe_allow_html=True)
+                st.markdown(
+                    f'<p style="font-size:0.88rem;color:{MIA_MUTED};margin-bottom:1rem;">'
+                    'Sistemul identifică furnizorul, numărul facturii, '
+                    'produsele, cantitățile și prețurile unitare.</p>', unsafe_allow_html=True)
+                if st.button("🔍 Extrage date din factură", type="primary", key="btn_extrage_fact",
+                             disabled=img_preview is None):
+                    with st.spinner("Gemini analizează factura…"):
+                        rez = extrage_factura_ai(img_bytes)
+                        if rez and "produse" in rez:
+                            st.session_state.produse_factura = rez["produse"]
+                            st.session_state.meta_factura = {
+                                "furnizor": rez.get("furnizor",""),
+                                "nr_factura": rez.get("nr_factura",""),
+                                "data": rez.get("data", date.today().strftime("%Y-%m-%d")),
+                                "total": rez.get("total", 0.0),
+                            }
+                            st.success(f"✓ {len(rez['produse'])} produse identificate.")
+                        else:
+                            st.session_state.produse_factura = []
+                st.markdown('</div>', unsafe_allow_html=True)
 
     if st.session_state.meta_factura:
         meta = st.session_state.meta_factura
@@ -1162,14 +1177,14 @@ with tab_facturi:
                                            key=f"pc_{i}", min_value=0.0)
                 with c3:
                     unit_ai = str(prod.get("unitate","")).lower().strip()
-                    unit_invalid = unit_ai not in UNITATI_VALIDE
+                    unit_invalid = not unitate_valida(unit_ai)
                     unit = st.text_input("Unitate", value="" if unit_invalid else unit_ai,
                                          key=f"pu_{i}", placeholder="kg/g/l/buc")
                     if unit_invalid:
                         st.markdown(f'<p style="font-size:0.72rem;color:{MIA_RED};margin-top:-8px;">⚠ Unitate necunoscută</p>',
                                     unsafe_allow_html=True)
                         are_invalide = True
-                    if unit and unit.lower().strip() not in UNITATI_VALIDE:
+                    if unit and not unitate_valida(unit):
                         are_invalide = True
                 with c4:
                     pret = st.number_input("Preț/UM", value=_f(prod.get("pret_unitar",0)),
@@ -1177,7 +1192,7 @@ with tab_facturi:
                 with c5:
                     sm_val = 0.0
                     if not stoc_df_f.empty:
-                        mask_sm = stoc_df_f["Produs"].str.lower().str.strip() == str(nume).lower().strip()
+                        mask_sm = stoc_df_f["Produs"].astype(str).str.lower().str.strip() == str(nume).lower().strip()
                         if mask_sm.any():
                             sm_val = _f(stoc_df_f[mask_sm].iloc[0].get("Stoc_Minim",0))
                     stoc_min = st.number_input("Minim", value=sm_val,
@@ -1185,7 +1200,7 @@ with tab_facturi:
 
                 # Alertă scumpire
                 if not stoc_df_f.empty and "Produs" in stoc_df_f.columns:
-                    m = stoc_df_f[stoc_df_f["Produs"].str.lower().str.strip() == str(nume).lower().strip()]
+                    m = stoc_df_f[stoc_df_f["Produs"].astype(str).str.lower().str.strip() == str(nume).lower().strip()]
                     if not m.empty:
                         try:
                             pret_v = _f(m.iloc[0].get("Pret_Unitar",0))
@@ -1281,9 +1296,15 @@ with tab_z:
 
         if uploaded_z:
             img_bytes_z = uploaded_z.read()
+            try:
+                img_preview_z = Image.open(io.BytesIO(img_bytes_z))
+            except Exception:
+                st.error("Fișierul nu este o imagine validă. Încearcă alt JPG/PNG/WEBP.")
+                img_preview_z = None
             col_zi, col_za = st.columns([1, 2])
             with col_zi:
-                st.image(Image.open(io.BytesIO(img_bytes_z)), use_container_width=True, caption="Raport Z")
+                if img_preview_z is not None:
+                    st.image(img_preview_z, use_container_width=True, caption="Raport Z")
             with col_za:
                 st.markdown('<div class="mia-card-sm">', unsafe_allow_html=True)
                 st.markdown(f'<div class="mia-eyebrow">Recunoaștere text · Gemini Vision</div>', unsafe_allow_html=True)
@@ -1291,7 +1312,8 @@ with tab_z:
                     f'<p style="font-size:0.85rem;color:{MIA_MUTED};margin-bottom:1rem;">'
                     'Sistemul extrage preparatele vândute și le cuplează automat cu rețetarul.</p>',
                     unsafe_allow_html=True)
-                if st.button("🔍 Scanează Raportul Z", type="primary", key="btn_scan_z"):
+                if st.button("🔍 Scanează Raportul Z", type="primary", key="btn_scan_z",
+                             disabled=img_preview_z is None):
                     if not preparate_z:
                         st.warning("Rețetarul este gol. Adaugă preparate în foaia 'Retetar'.")
                     else:
@@ -1589,18 +1611,21 @@ with tab_sim:
 
     st.markdown(f'<div class="mia-eyebrow" style="margin-top:0.25rem;">Ajustare rapidă preț</div>',
                 unsafe_allow_html=True)
+    # Sliderul ajustează prețul DOAR dacă inputul numeric de mai sus e încă pe 0
+    # (preparat nou, fără preț fixat). Dacă userul a introdus un preț, acela e cel activ.
     sl_min = max(1.0, pret_vz - 20) if pret_vz > 0 else 1.0
     sl_max = pret_vz + 40 if pret_vz > 0 else 100.0
-    sl_val = float(pret_vz) if pret_vz > 0 else 20.0
-    pret_slider = st.slider("Preț", min_value=sl_min, max_value=sl_max, value=sl_val,
-                             step=0.5, label_visibility="collapsed")
-    pret_calc = pret_vz if pret_vz > 0 and abs(pret_vz - sl_val) > 0.01 else pret_slider
+    sl_default = float(pret_vz) if pret_vz > 0 else 20.0
+    pret_slider = st.slider("Preț", min_value=sl_min, max_value=sl_max, value=sl_default,
+                             step=0.5, label_visibility="collapsed",
+                             help="Activ doar când câmpul de preț de mai sus e 0 — altfel folosește valoarea tastată")
+    pret_calc = pret_vz if pret_vz > 0 else pret_slider
 
     st.markdown(f"""
     <div style="font-size:0.82rem;color:{MIA_MUTED};margin-bottom:1rem;">
         Preț activ: <strong style="color:{MIA_PURPLE};font-size:1rem;">{pret_calc:.2f} RON</strong>
         &nbsp;·&nbsp;
-        <span style="color:{MIA_FAINT};">Modifică sus sau trage sliderul</span>
+        <span style="color:{MIA_FAINT};">{'Tastat sus' if pret_vz > 0 else 'Setat din slider'}</span>
     </div>""", unsafe_allow_html=True)
 
     nr_ing = st.number_input("Nr. ingrediente", min_value=1, max_value=20, value=3, step=1)
@@ -1631,7 +1656,12 @@ with tab_sim:
         fixe    = (_f(cfg_sim.get("chirie_lunara",0)) + _f(cfg_sim.get("salarii_lunare",0))
                    + _f(cfg_sim.get("utilitati_lunare",0)))
         regie_s = fixe / nr_cl if nr_cl > 0 else 0
-        c_sim   = cascada(pret_calc, fc_sim + regie_s, cfg_sim)
+        # IMPORTANT: regie_s e deja cota din cheltuielile fixe lunare alocată acestui preparat.
+        # cascada() ar scădea ÎN PLUS cheltuielile fixe ale întregii zile (fixe_zi), ceea ce ar
+        # dubla acest cost pentru un singur preparat simulat. De aceea trimitem o config cu
+        # cheltuielile fixe lunare zerouite — regia e deja inclusă manual în food_cost.
+        cfg_sim_fara_fixe = {**cfg_sim, "chirie_lunara": 0, "salarii_lunare": 0, "utilitati_lunare": 0}
+        c_sim   = cascada(pret_calc, fc_sim + regie_s, cfg_sim_fara_fixe)
         c_sim["food_cost"]               = round(fc_sim, 2)
         c_sim["cheltuieli_fixe_zilnice"]  = round(regie_s, 2)
 
