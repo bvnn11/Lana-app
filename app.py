@@ -624,7 +624,6 @@ def _gemini_call(img_bytes: bytes, prompt: str) -> dict | None:
             {"text": prompt},
         ]}]}).encode()
         
-        # URL-ul fix, curat, garantat fără dubluri:
         url_complet = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
         
         req = urllib.request.Request(
@@ -634,8 +633,7 @@ def _gemini_call(img_bytes: bytes, prompt: str) -> dict | None:
         with urllib.request.urlopen(req) as r:
             result = json.loads(r.read())
         raw = result["candidates"][0]["content"]["parts"][0]["text"].strip()
-        raw = raw.replace("```json", "").replace("
-```", "").strip()
+        raw = raw.replace("```json", "").replace("```", "").strip()
         return json.loads(raw)
     except json.JSONDecodeError:
         st.error("Extragerea nu a returnat date valide. Încearcă cu o imagine mai clară.")
