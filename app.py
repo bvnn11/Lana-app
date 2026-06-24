@@ -46,7 +46,7 @@ AMBER  = "#D97706"
 BLUE   = "#2563EB"
 
 SHEETS_BASE = "https://sheets.googleapis.com/v4/spreadsheets"
-GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash"
 
 UNITATI = ["kg", "g", "l", "ml", "buc"]
 
@@ -623,14 +623,17 @@ def _gemini_call(img_bytes: bytes, prompt: str) -> dict | None:
             {"inline_data": {"mime_type": "image/jpeg", "data": b64_img}},
             {"text": prompt},
         ]}]}).encode()
+        
+        # CORECTAT: Am adăugat :generateContent direct aici în URL, înainte de cheie
         req = urllib.request.Request(
-            f"{GEMINI_BASE}?key={key}", data=payload,
+            f"{GEMINI_BASE}:generateContent?key={key}", data=payload,
             headers={"Content-Type": "application/json"}, method="POST",
         )
         with urllib.request.urlopen(req) as r:
             result = json.loads(r.read())
         raw = result["candidates"][0]["content"]["parts"][0]["text"].strip()
-        raw = raw.replace("```json", "").replace("```", "").strip()
+        raw = raw.replace("```json", "").replace("
+```", "").strip()
         return json.loads(raw)
     except json.JSONDecodeError:
         st.error("Extragerea nu a returnat date valide. Încearcă cu o imagine mai clară.")
